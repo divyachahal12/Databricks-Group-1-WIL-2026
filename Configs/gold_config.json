@@ -1,0 +1,46 @@
+{
+  "sources": {
+    "silver_schema": "cdr_silver.processed_mimic_iv",
+    "bronze_schema": "cdr_bronze.raw_mimic_iv"
+  },
+  "target": {
+    "gold_schema": "cdr_gold.mimic_iv"
+  },
+  "parameters": {
+    "include_ed_in_occupancy": false,
+    "readmission_window_days": 30,
+    "icu_careunit_patterns": ["intensive care", "(ccu)"],
+    "urine_label_regex": "urine|foley",
+    "ventilation_label_regex": "ventilat|intubat",
+    "age_group_bounds": [30, 50, 65, 80]
+  },
+  "tables": {
+    "patient_journey": {
+      "comment": "One row per hospital admission with demographics, outcomes, risk scores and ICU exposure. Dates are de-identified and shifted per patient.",
+      "column_comments": {
+        "age_at_admission": "Derived: anchor_age + (admission year - anchor_year). MIMIC-IV stores no direct age.",
+        "readmit_30d": "True if the patient was readmitted within the configured window after discharge. Null for the last known admission.",
+        "ed_boarding_hours": "Hours between ED registration and ED exit, where recorded.",
+        "drg_severity": "APR-DRG severity score (1-4), higher is more severe.",
+        "icu_hours": "Total hours in ICU-type units for this admission, derived from transfers."
+      }
+    },
+    "icu_clinical_monitoring": {
+      "comment": "One row per ICU stay per day: fluids, urine output, weight, procedures and ventilation. Fluid intake comes from ingredientevents (ml only).",
+      "column_comments": {
+        "intake_ml": "Daily fluid intake in ml from ingredientevents. Raw inputevents mixes units and is not summed here.",
+        "net_balance_ml": "intake_ml minus output_ml for the day. Negative means the patient lost more than they received.",
+        "icu_day_number": "Day of stay starting at 1, counted from the first recorded event of the stay."
+      }
+    },
+    "hospital_pressure_daily": {
+      "comment": "Daily occupancy, admissions and transfer activity per care unit. Dates are per-patient shifted: compare day_of_week and is_weekend across patients, not absolute dates.",
+      "column_comments": {
+        "patients_present": "Distinct patients physically in the unit that day, from interval-expanded transfer segments.",
+        "pressure_score": "Project-defined z-score blend of occupancy, admissions and transfers per unit. Not a bed-capacity percentage.",
+        "day_of_week": "Preserved by the de-identification shift, safe to compare across patients.",
+        "is_weekend": "True for Saturday and Sunday. Preserved by the de-identification shift."
+      }
+    }
+  }
+}
