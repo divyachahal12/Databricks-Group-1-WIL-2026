@@ -46,13 +46,14 @@ Every layer follows the same pattern:
 ### Repository Structure
 
     cdr-accelerator/
-        bronze_layer/ 
-             bronze_ingest_mimic_iv
-        silver_layer/ 
-            01_silver_core_reference
-            02_silver_clinical_events
-            03_silver_orders_meds_icu
-        gold_layer/ 
+        drivers/
+            bronze_layer/ 
+                 bronze_ingest_mimic_iv
+            silver_layer/ 
+                01_silver_core_reference
+                02_silver_clinical_events
+                03_silver_orders_meds_icu
+            gold_layer/ 
         utils/
             00_silver_utils
         configs/
@@ -70,7 +71,7 @@ Every layer follows the same pattern:
 
 **Purpose:** Ingest raw source files into Delta tables exactly as sourced, with full lineage metadata.
 
-**Driver:** `bronze_layer/bronze_ingest_mimic_iv`
+**Driver:** `drivers/bronze_layer/bronze_ingest_mimic_iv`
 **Config:** `bronze_config.json` at `/Volumes/cdr_bronze/config/table_config/`
 
 #### Behaviour
@@ -82,6 +83,10 @@ Every layer follows the same pattern:
 - Supports `auto`, `historical`, `incremental` load modes
 - Writes Delta tables with `_ingest_timestamp`, `_source_file`, `_run_id`
 - Logs every file to an audit table
+
+**Input format:** CSV. MIMIC-IV ships as CSV.
+**Storage format:** Delta Lake, which stores Parquet files plus a transaction log.
+
 
 #### Load Type Resolution
 
@@ -122,15 +127,17 @@ Keyless tables in MIMIC-IV: `chartevents`, `emar_detail`
 
 #### Design Decisions
 
-| Decision | Alternatives | Why This Choice |
-|----------|--------------|-----------------|
-| CSV over Parquet ingestion | Parquet is faster | MIMIC-IV ships as CSV; conversion adds no value at Bronze |
-| Recursive S3 scan | Explicit file list in config | Handles nested folder structures (MIMIC-IV uses `hosp/`, `icu/`) |
-| Row hash fallback | Reject keyless tables | No manual intervention; deterministic; idempotent |
-| Delta merge over overwrite | Overwrite is simpler | Merge preserves history and supports incremental loads |
-| `_row_key` in row hash | Use hash of specific columns | Full-row hash handles schema changes without config updates |
-| Audit table per layer | Single audit table | Layer separation; easier to query per layer |
-| Three load modes | Always overwrite | Supports both initial load and incremental updates |
+| Decision | What Was Built | Note |
+|----------|----------------|------|
+| Input format | CSV | Matches MIMIC-IV distribution format |
+| Storage format | Delta Lake | Parquet files plus a transaction log |
+| S3 scan | Recursive | Handles nested folders in MIMIC-IV (`hosp/`, `icu/`) |
+| Keyless tables | SHA-256 row hash fallback | Deterministic, no manual keys needed |
+| Write mode | Delta merge on existing tables | Preserves history, supports incremental loads |
+| Metadata columns | Three added | `_ingest_timestamp`, `_source_file`, `_run_id` |
+| Load modes | Three supported | auto, historical, incremental |
+| Audit | One table per layer | Self-contained retention |
+
 
 #### Use Case Extensions
 
@@ -141,6 +148,7 @@ Keyless tables in MIMIC-IV: `chartevents`, `emar_detail`
 | **Multiple sources per table** | Add `file_pattern` glob support |
 | **Historical backfill** | Use `historical` load type; overwrites cleanly |
 | **Near-real-time** | Auto Loader + Delta Live Tables |
+| **Additional metadata columns** | Extend the `df_bronze` transformation block |
 
 ---
 
@@ -148,7 +156,7 @@ Keyless tables in MIMIC-IV: `chartevents`, `emar_detail`
 
 **Purpose:** Clean, validate, deduplicate, and standardise Bronze tables.
 
-**Driver notebooks:** `01_silver_core_reference`, `02_silver_clinical_events`, `03_silver_orders_meds_icu`
+**Driver notebooks:** `drivers/silver_layer/01_silver_core_reference`, `02_silver_clinical_events`, `03_silver_orders_meds_icu`
 **Shared logic:** `utils/00_silver_utils`
 **Config:** `/Volumes/cdr_silver/config/silver_config/silver_config.json`
 
@@ -156,8 +164,8 @@ Keyless tables in MIMIC-IV: `chartevents`, `emar_detail`
 
 - Reads `silver_config.json` to determine which tables each driver owns (via `silver_notebook` field)
 - Applies column mappings, derived columns, deduplication, quality rules
-- Routes tables to the correct driver automatically
-- Supports `special_transform` for bespoke logic
+- Generates a SHA-256 `_natural_key` for tables with `needs_surrogate_key: true`
+- Writes cleansed tables with `_silver_timestamp` and `_run_id`
 - Shares `run_id` with Bronze for full lineage
 - Logs every table to a Silver audit table
 
@@ -168,21 +176,56 @@ Keyless tables in MIMIC-IV: `chartevents`, `emar_detail`
 | `quarantine` | Invalid rows written to quarantine table; removed from flow |
 | `flag` | Flag column added; rows remain |
 
+#### Initial Run vs Subsequent Runs
+
+| Run | Behaviour |
+|-----|-----------|
+| First run (table does not exist) | Creates the table with a full load |
+| Later run (table exists) | Merges into the existing table on the configured keys |
+
+Reruns are safe. They do not duplicate rows. They update existing rows and insert new ones.
+
+#### Cleaning Rule Dispatch
+
+The cleaning rules are declared in config and dispatched by name from a function registry in `00_silver_utils`. Available functions:
+
+| Function | Purpose |
+|----------|---------|
+| `fill_missing` | Replace null or empty values with a placeholder |
+| `standardize_category` | Trim, collapse spaces, drop trailing periods, uppercase |
+| `rename_column` | Rename a column |
+| `coalesce_and_drop` | Pick the longer of two text columns, drop both originals |
+| `drop_columns` | Drop a list of columns |
+| `strip_html` | Remove HTML tags from free text |
+| `cast_boolean` | Cast a column to boolean |
+| `map_values_to_default` | Replace specific values (case-insensitive) with a default |
+| `set_constant` | Overwrite every value in a column with a fixed literal |
+
+Adding a new cleaning rule type means writing one function, adding it to `FN_REGISTRY`, and referencing it by name from config.
+
 #### Special Transforms
 
-Registered by table name in the driver notebook and referenced from config. Used when logic cannot be expressed as declarative rules. Example: `omr` BMI recompute (groups height/weight, drops missing values, recomputes BMI).
+Some tables require logic that cannot be expressed as declarative rules. These are registered by table name in the driver notebook and applied after the config-driven cleaning rules. Example: `omr` BMI recompute, which groups height and weight, filters missing values, and recomputes BMI.
+
+#### Audit Table
+
+**Table:** `cdr_silver.processed_mimic_iv.silver_audit_log`
+
+**Columns:** `run_id`, `layer`, `source_table`, `target_table`, `load_type`, `status`, `row_count`, `rows_inserted`, `rows_updated`, `start_time`, `end_time`, `duration_seconds`, `error_message`.
+
 
 #### Design Decisions
 
-| Decision | Alternatives | Why This Choice |
-|----------|--------------|-----------------|
-| 3 driver notebooks over 1 | 1 notebook is simpler | Parallelism: 3 drivers run concurrently after Bronze |
-| 3 drivers over 30+ | 30 drivers maximises parallelism | Diminishing returns; maintenance burden |
-| Config-based routing | Hardcoded lists per notebook | Config keeps routing visible without editing notebooks |
-| `special_transform` slot | Force all rules into declarative format | Some clinical logic (BMI recompute, unit conversion) resists declarative expression |
-| Shared run_id with Bronze | Independent run_id | Full traceability across layers |
-| Quarantine vs reject | Reject rows entirely | Preserves evidence; allows post-hoc review |
-| Flag vs quarantine | Force decisions upfront | Some rules are informational; not all violations are fatal |
+| Decision | What Was Built | Note |
+|----------|----------------|------|
+| Driver split | Three drivers by domain | Enables parallel execution after Bronze |
+| Table routing | `silver_notebook` field in config | Adding a table does not require editing a notebook |
+| Cleaning dispatch | `FN_REGISTRY` in utils | Adding a rule type is one function and one config key |
+| Surrogate keys | SHA-256 `_natural_key` for keyless tables | Deterministic and idempotent |
+| Bespoke logic | `special_transform` per driver | Applied after config-driven rules |
+| Run ID | Shared with Bronze | Full traceability across layers |
+| Rerun safety | Merge on configured keys | Reruns are idempotent |
+| Audit fields | Includes layer and source_table | Distinguishes Silver runs from Bronze |
 
 #### Use Case Extensions
 
