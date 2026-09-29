@@ -22,9 +22,10 @@ A Databricks-based solution accelerator for building Clinical Data Repositories 
 ## Repository Structure
 
     cdr-accelerator/
-        bronze_layer/ # Raw CSV ingestion into Delta
-        silver_layer/ # Cleaning, dedup, standardisation
-        gold_layer/ # Dimensional model for analytics
+        drivers/
+            bronze_layer/ # Raw CSV ingestion into Delta
+            silver_layer/ # Cleaning, dedup, standardisation
+            gold_layer/ # Dimensional model for analytics
         utils/ # Shared utility notebooks per layer
         configs/
         mimic_iv/ # Reference dataset configs
@@ -43,6 +44,29 @@ A Databricks-based solution accelerator for building Clinical Data Repositories 
 Full setup instructions: `docs/Operations_guide.md`
 Onboarding a new dataset: `docs/Dataset_onboarding.md`
 
+## Pipeline Overview
+
+The pipeline runs as a single Databricks Workflow. Each task in a run shares one `run_id`:
+
+- The Bronze task generates the run ID, then publishes it as a Databricks task value.
+- Each Silver task reads that value via `get_shared_run_id()`, which fetches it from the upstream task key `bronze_ingest`.
+- If a Silver notebook is run standalone, it falls back to a fresh UUID and logs a warning that the run will not share an audit trail with Bronze.
+
+Every table processed writes an audit row carrying the same `run_id`. This means any run can be traced across layers using a single identifier.
+
+---
+
+## Load Modes
+
+The Bronze driver supports three load modes, set through the `load_type` widget:
+
+- **auto** (default): Creates the table if it does not exist, merges into it if it does.
+- **historical**: Always overwrites the target table. Used for a full reload, for example after fixing source data or changing a merge key.
+- **incremental**: Merges if the table exists, creates it if not. Used when the intent is to update rather than to load for the first time.
+
+Silver follows the same idea without the widget. On first run, the table is created with a full load. On later runs, the driver merges into it on the configured keys. Reruns do not duplicate rows.
+
+
 ---
 
 ## Layer Overview
@@ -51,7 +75,7 @@ Onboarding a new dataset: `docs/Dataset_onboarding.md`
 
 Ingests raw MIMIC-IV CSVs from S3 into Delta tables exactly as sourced, adding lineage metadata and full audit logging.
 
-**Driver notebook:** `bronze_layer/bronze_ingest_mimic_iv`
+**Driver notebook:** `drivers/bronze_layer/bronze_ingest_mimic_iv`
 **Config:** `/Volumes/cdr_bronze/config/table_config/bronze_config.json`
 
 **What it does:**
@@ -69,7 +93,7 @@ Ingests raw MIMIC-IV CSVs from S3 into Delta tables exactly as sourced, adding l
 
 Cleans, validates, deduplicates, and standardises Bronze tables into a harmonised Silver schema.
 
-**Driver notebooks:** `01_silver_core_reference`, `02_silver_clinical_events`, `03_silver_orders_meds_icu`
+**Driver notebooks:** `drivers/silver_layer/01_silver_core_reference`, `02_silver_clinical_events`, `03_silver_orders_meds_icu`
 **Shared logic:** `utils/00_silver_utils`
 **Config:** `/Volumes/cdr_silver/config/silver_config/silver_config.json`
 
@@ -81,6 +105,12 @@ Cleans, validates, deduplicates, and standardises Bronze tables into a harmonise
 - Logs every table to a Silver audit table
 
 **Target tables:** `cdr_silver.processed_mimic_iv.<table_name>`
+
+**First run vs later runs:**
+- First run: the table is created with a full load.
+- Later runs: the driver merges into the existing table on the configured merge keys.
+- Reruns update existing rows and insert new ones. They never duplicate.
+
 
 ### Gold Layer
 
@@ -166,16 +196,20 @@ See `docs/Operations_guide.md` for the full troubleshooting list.
 
 Key architectural choices and the reasoning behind them:
 
-| Decision | Alternatives Considered | Why This Approach |
-|----------|-------------------------|-------------------|
-| JSON configs over YAML | YAML is more readable; JSONC supports comments | JSON is native to Databricks widgets and Unity Catalog volumes |
-| Delta Lake for all layers | Parquet (cheaper), Iceberg (open standard) | Delta provides ACID, time travel, and merge support out of the box on Databricks |
-| Driver notebooks over Python classes | Python classes are more testable | Notebooks reduce friction for team onboarding and match Databricks workflows |
-| Row hash fallback for keyless tables | Reject keyless tables; manual key assignment | Row hash is deterministic and idempotent - no manual intervention required |
-| Shared utils notebooks over libraries | Libraries are more reusable | Notebooks support `%run` and are visible in the workspace |
-| 3 Silver drivers over 1 | 1 driver is simpler; many drivers is more parallel | 3 drivers balance parallelism with maintainability |
-| Databricks Workflows over Airflow | Airflow is more flexible | Native integration with Databricks; no external orchestration |
-| Unity Catalog for governance | Hive Metastore, manual ACLs | Centralised, auditable, integrates with all Databricks features |
+| Decision | What Was Built | Note |
+|----------|----------------|------|
+| Config format | JSON | Native to Databricks widgets and Unity Catalog volumes |
+| Bronze input format | CSV | Matches MIMIC-IV distribution format |
+| Storage format | Delta Lake | Stores Parquet files plus a transaction log; ACID and time travel on Databricks |
+| Orchestration | Databricks Workflows | Native integration, no external orchestrator |
+| Keyless table handling | SHA-256 row hash fallback | Deterministic and idempotent, no manual key assignment |
+| Silver driver split | Three drivers by domain | Enables parallel execution after Bronze |
+| Table routing | `silver_notebook` field in config | Adding a table does not require editing a notebook |
+| Cleaning rule dispatch | `FN_REGISTRY` in utils | Adding a new rule type requires one function and one config key |
+| Bespoke logic | `special_transform` per driver | Some clinical logic cannot be expressed as declarative rules |
+| Run ID | Shared via Databricks task values | Bronze publishes, Silver reads; full cross-layer traceability |
+| Audit tables | One per layer | Self-contained, simpler retention |
+
 
 ---
 
