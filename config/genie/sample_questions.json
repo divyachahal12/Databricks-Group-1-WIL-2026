@@ -1,0 +1,58 @@
+{
+  "sample_questions": [
+    {
+      "id": "00000000000000000000000000000101",
+      "question": [
+        "How many hospital admissions are recorded, and what is the average hospital length of stay?"
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000102",
+      "question": [
+        "Which clinical services have the highest number of hospital admissions?"
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000103",
+      "question": [
+        "How does hospital length of stay compare between admissions with and without ICU involvement?"
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000104",
+      "question": [
+        "How many ICU stays and ICU stay-days are recorded?"
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000105",
+      "question": [
+        "Which ICU care units have the highest average vital-sign monitoring activity per stay-day?"
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000106",
+      "question": [
+        "How does average fluid imbalance differ across ICU care units?"
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000107",
+      "question": [
+        "Which care units have the highest average active patient count per day?"
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000108",
+      "question": [
+        "Which care units have the highest proportion of high-activity days?"
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000109",
+      "question": [
+        "How does recorded patient movement differ between weekdays and weekends?"
+      ]
+    }
+  ]
+}
