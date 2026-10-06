@@ -9,7 +9,7 @@ from pathlib import Path
 THIS_FILE = Path(__file__).resolve()
 REPO_ROOT = THIS_FILE.parents[2]
 
-METADATA_DIR = REPO_ROOT / "config" / "metadata"
+METADATA_DIR = REPO_ROOT / "Configs" / "metadata"
 
 
 # -------------------------------------------------------------------
@@ -139,10 +139,14 @@ def apply_table_metadata(
     ):
         description = column_info["description"]
 
+        quoted_column = (
+            f"{quoted_table}."
+            f"{quote_column(column_name)}"
+        )
+
         commands.append(
-            f"ALTER TABLE {quoted_table} "
-            f"ALTER COLUMN {quote_column(column_name)} "
-            f"COMMENT {sql_string(description)}"
+            f"COMMENT ON COLUMN {quoted_column} "
+            f"IS {sql_string(description)}"
         )
 
     print()
