@@ -676,6 +676,18 @@
       "_natural_key"
     ],
     "needs_surrogate_key": true,
+    "natural_key_columns": [
+      "subject_id",
+      "hadm_id",
+      "stay_id",
+      "caregiver_id",
+      "charttime",
+      "itemid",
+      "value",
+      "valuenum",
+      "valueuom",
+      "warning"
+    ],
     "cleaning_rules": [
       {
         "fn": "drop_columns",

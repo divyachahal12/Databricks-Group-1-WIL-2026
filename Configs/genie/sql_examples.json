@@ -1,0 +1,430 @@
+{
+  "example_question_sqls": [
+    {
+      "id": "00000000000000000000000000000201",
+      "question": [
+        "How many hospital admissions are recorded, and what is the average hospital length of stay?"
+      ],
+      "sql": [
+        "SELECT\n",
+        "  COUNT(DISTINCT hadm_id) AS admissions,\n",
+        "  AVG(hospital_los_days) AS avg_hospital_los_days\n",
+        "FROM cdr_gold.analytics_mimic_iv.admission_journey\n",
+        "WHERE hospital_los_days IS NOT NULL"
+      ],
+      "usage_guidance": [
+        "Use admission_journey for hospital admission counts and hospital length-of-stay measures.",
+        "Count admissions using distinct hadm_id."
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000202",
+      "question": [
+        "Which clinical services have the highest number of hospital admissions?"
+      ],
+      "sql": [
+        "SELECT\n",
+        "  initial_service,\n",
+        "  COUNT(DISTINCT hadm_id) AS admissions\n",
+        "FROM cdr_gold.analytics_mimic_iv.admission_journey\n",
+        "GROUP BY initial_service\n",
+        "ORDER BY admissions DESC"
+      ],
+      "usage_guidance": [
+        "Use initial_service when comparing the clinical service responsible at the beginning of an admission.",
+        "Include admission counts when ranking services."
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000203",
+      "question": [
+        "How does hospital length of stay compare between admissions with and without ICU involvement?"
+      ],
+      "sql": [
+        "SELECT\n",
+        "  icu_flag,\n",
+        "  COUNT(DISTINCT hadm_id) AS admissions,\n",
+        "  AVG(hospital_los_days) AS avg_hospital_los_days\n",
+        "FROM cdr_gold.analytics_mimic_iv.admission_journey\n",
+        "WHERE hospital_los_days IS NOT NULL\n",
+        "GROUP BY icu_flag\n",
+        "ORDER BY icu_flag"
+      ],
+      "usage_guidance": [
+        "Use icu_flag to distinguish hospital admissions with and without ICU involvement.",
+        "Describe differences as observed associations and do not infer clinical severity or causation."
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000204",
+      "question": [
+        "What is the observed hospital mortality rate by admission type?"
+      ],
+      "sql": [
+        "SELECT\n",
+        "  admission_type,\n",
+        "  COUNT(DISTINCT hadm_id) AS admissions,\n",
+        "  SUM(mortality_flag) AS deaths,\n",
+        "  AVG(CAST(mortality_flag AS DOUBLE)) AS mortality_rate\n",
+        "FROM cdr_gold.analytics_mimic_iv.admission_journey\n",
+        "GROUP BY admission_type\n",
+        "ORDER BY mortality_rate DESC"
+      ],
+      "usage_guidance": [
+        "Use mortality_flag for observed in-hospital mortality.",
+        "Include the number of admissions when comparing mortality rates between groups.",
+        "Do not interpret differences as evidence of causation or clinical severity."
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000205",
+      "question": [
+        "How many ICU stays and ICU stay-days are recorded?"
+      ],
+      "sql": [
+        "SELECT\n",
+        "  COUNT(*) AS icu_stay_days,\n",
+        "  COUNT(DISTINCT stay_id) AS icu_stays\n",
+        "FROM cdr_gold.analytics_mimic_iv.icu_clinical_monitoring"
+      ],
+      "usage_guidance": [
+        "Rows in icu_clinical_monitoring represent ICU stay-days.",
+        "Use distinct stay_id when counting ICU stays."
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000206",
+      "question": [
+        "Which ICU care units have the highest average vital-sign monitoring activity per stay-day?"
+      ],
+      "sql": [
+        "SELECT\n",
+        "  icu_careunit,\n",
+        "  COUNT(*) AS icu_stay_days,\n",
+        "  AVG(vital_observation_count) AS avg_vital_observations_per_stay_day\n",
+        "FROM cdr_gold.analytics_mimic_iv.icu_clinical_monitoring\n",
+        "GROUP BY icu_careunit\n",
+        "ORDER BY avg_vital_observations_per_stay_day DESC"
+      ],
+      "usage_guidance": [
+        "Use vital_observation_count for daily bedside vital-monitoring activity.",
+        "Include ICU stay-day counts when ranking care units so small groups can be identified."
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000207",
+      "question": [
+        "How does average fluid imbalance differ across ICU care units?"
+      ],
+      "sql": [
+        "SELECT\n",
+        "  icu_careunit,\n",
+        "  COUNT(*) AS complete_fluid_balance_days,\n",
+        "  AVG(ABS(net_fluid_balance_ml)) AS avg_absolute_fluid_imbalance_ml\n",
+        "FROM cdr_gold.analytics_mimic_iv.icu_clinical_monitoring\n",
+        "WHERE fluid_balance_complete = TRUE\n",
+        "  AND net_fluid_balance_ml IS NOT NULL\n",
+        "GROUP BY icu_careunit\n",
+        "ORDER BY avg_absolute_fluid_imbalance_ml DESC"
+      ],
+      "usage_guidance": [
+        "Use net_fluid_balance_ml only when fluid_balance_complete is TRUE.",
+        "Use ABS(net_fluid_balance_ml) when the question concerns magnitude of imbalance rather than direction.",
+        "Do not treat missing fluid input or output as zero."
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000208",
+      "question": [
+        "Which ICU care units have the highest proportion of high lab activity days?"
+      ],
+      "sql": [
+        "SELECT\n",
+        "  icu_careunit,\n",
+        "  COUNT(*) AS icu_stay_days,\n",
+        "  SUM(CASE WHEN high_lab_activity_flag THEN 1 ELSE 0 END) AS high_lab_activity_days,\n",
+        "  AVG(CASE WHEN high_lab_activity_flag THEN 1.0 ELSE 0.0 END) AS high_lab_activity_rate\n",
+        "FROM cdr_gold.analytics_mimic_iv.icu_clinical_monitoring\n",
+        "GROUP BY icu_careunit\n",
+        "ORDER BY high_lab_activity_rate DESC"
+      ],
+      "usage_guidance": [
+        "Treat high_lab_activity_flag as a dataset-relative analytical indicator.",
+        "Do not describe a high flag rate as greater clinical severity or patient risk.",
+        "Include ICU stay-day counts when comparing care units."
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000209",
+      "question": [
+        "Which care units have the highest average active patient count per day?"
+      ],
+      "sql": [
+        "SELECT\n",
+        "  careunit,\n",
+        "  COUNT(*) AS careunit_days,\n",
+        "  AVG(active_patient_count) AS avg_active_patients_per_day\n",
+        "FROM cdr_gold.analytics_mimic_iv.hospital_operational_activity\n",
+        "GROUP BY careunit\n",
+        "ORDER BY avg_active_patients_per_day DESC"
+      ],
+      "usage_guidance": [
+        "Use hospital_operational_activity for daily care-unit operational measures.",
+        "active_patient_count represents recorded patient presence and must not be described as staffed-bed occupancy or capacity utilisation.",
+        "Include care-unit-day counts when ranking care units."
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000210",
+      "question": [
+        "Which care units have the highest proportion of high-activity days?"
+      ],
+      "sql": [
+        "SELECT\n",
+        "  careunit,\n",
+        "  COUNT(*) AS careunit_days,\n",
+        "  SUM(high_activity_flag) AS high_activity_days,\n",
+        "  AVG(CAST(high_activity_flag AS DOUBLE)) AS high_activity_rate\n",
+        "FROM cdr_gold.analytics_mimic_iv.hospital_operational_activity\n",
+        "GROUP BY careunit\n",
+        "ORDER BY high_activity_rate DESC"
+      ],
+      "usage_guidance": [
+        "high_activity_flag is relative to each care unit's historical activity distribution.",
+        "Do not interpret high_activity_flag as evidence of overcrowding, capacity breach, staffing problems, or clinical risk.",
+        "Include the number of care-unit days when comparing high-activity rates."
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000211",
+      "question": [
+        "How does recorded patient movement differ between weekdays and weekends?"
+      ],
+      "sql": [
+        "SELECT\n",
+        "  CASE WHEN weekend_flag = 1 THEN 'Weekend' ELSE 'Weekday' END AS day_type,\n",
+        "  COUNT(*) AS careunit_days,\n",
+        "  AVG(total_patient_movement) AS avg_patient_movement,\n",
+        "  AVG(patient_arrival_count) AS avg_arrivals,\n",
+        "  AVG(patient_departure_count) AS avg_departures\n",
+        "FROM cdr_gold.analytics_mimic_iv.hospital_operational_activity\n",
+        "GROUP BY weekend_flag\n",
+        "ORDER BY weekend_flag"
+      ],
+      "usage_guidance": [
+        "Use weekend_flag for weekday-versus-weekend operational comparisons.",
+        "total_patient_movement is arrivals plus departures.",
+        "Describe differences as recorded operational patterns without inventing causes."
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000212",
+      "question": [
+        "Which care units have the highest average daily patient turnover?"
+      ],
+      "sql": [
+        "SELECT\n",
+        "  careunit,\n",
+        "  COUNT(daily_patient_turnover) AS careunit_days_with_turnover,\n",
+        "  AVG(daily_patient_turnover) AS avg_daily_patient_turnover\n",
+        "FROM cdr_gold.analytics_mimic_iv.hospital_operational_activity\n",
+        "WHERE daily_patient_turnover IS NOT NULL\n",
+        "GROUP BY careunit\n",
+        "ORDER BY avg_daily_patient_turnover DESC"
+      ],
+      "usage_guidance": [
+        "daily_patient_turnover is total patient movement divided by active patient count.",
+        "Exclude NULL turnover values from turnover averages.",
+        "This is an analytical operational measure and should not be described as a formal hospital occupancy or capacity metric."
+      ]
+    },
+        {
+      "id": "00000000000000000000000000000213",
+      "question": [
+        "Do admissions with high vital monitoring activity in the ICU have different hospital length of stay?"
+      ],
+      "sql": [
+        "WITH icu_by_admission AS (\n",
+        "  SELECT\n",
+        "    hadm_id,\n",
+        "    MAX(CASE WHEN high_vital_monitoring_flag THEN 1 ELSE 0 END) AS had_high_vital_monitoring\n",
+        "  FROM cdr_gold.analytics_mimic_iv.icu_clinical_monitoring\n",
+        "  WHERE hadm_id IS NOT NULL\n",
+        "  GROUP BY hadm_id\n",
+        ")\n",
+        "SELECT\n",
+        "  i.had_high_vital_monitoring,\n",
+        "  COUNT(DISTINCT a.hadm_id) AS admissions,\n",
+        "  AVG(a.hospital_los_days) AS avg_hospital_los_days\n",
+        "FROM cdr_gold.analytics_mimic_iv.admission_journey a\n",
+        "INNER JOIN icu_by_admission i\n",
+        "  ON a.hadm_id = i.hadm_id\n",
+        "WHERE a.hospital_los_days IS NOT NULL\n",
+        "GROUP BY i.had_high_vital_monitoring\n",
+        "ORDER BY i.had_high_vital_monitoring"
+      ],
+      "usage_guidance": [
+        "Use this pattern when combining admission-level outcomes with ICU stay-day activity.",
+        "Aggregate icu_clinical_monitoring to one row per hadm_id before joining to admission_journey.",
+        "Do not directly join admission-level measures to multiple ICU stay-day rows because this will overweight admissions with longer ICU stays.",
+        "high_vital_monitoring_flag is a dataset-relative activity indicator, not a clinical severity measure.",
+        "Describe differences as observed associations rather than causal effects."
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000214",
+      "question": [
+        "How does hospital admission volume compare with recorded care-unit operational activity by year?"
+      ],
+      "sql": [
+        "WITH admissions_by_year AS (\n",
+        "  SELECT\n",
+        "    admission_year AS activity_year,\n",
+        "    COUNT(DISTINCT hadm_id) AS admissions,\n",
+        "    AVG(hospital_los_days) AS avg_hospital_los_days\n",
+        "  FROM cdr_gold.analytics_mimic_iv.admission_journey\n",
+        "  WHERE admission_year IS NOT NULL\n",
+        "  GROUP BY admission_year\n",
+        "),\n",
+        "operations_by_year AS (\n",
+        "  SELECT\n",
+        "    activity_year,\n",
+        "    COUNT(*) AS careunit_days,\n",
+        "    AVG(active_patient_count) AS avg_active_patients_per_careunit_day,\n",
+        "    AVG(total_patient_movement) AS avg_patient_movement_per_careunit_day\n",
+        "  FROM cdr_gold.analytics_mimic_iv.hospital_operational_activity\n",
+        "  GROUP BY activity_year\n",
+        ")\n",
+        "SELECT\n",
+        "  a.activity_year,\n",
+        "  a.admissions,\n",
+        "  a.avg_hospital_los_days,\n",
+        "  o.careunit_days,\n",
+        "  o.avg_active_patients_per_careunit_day,\n",
+        "  o.avg_patient_movement_per_careunit_day\n",
+        "FROM admissions_by_year a\n",
+        "INNER JOIN operations_by_year o\n",
+        "  ON a.activity_year = o.activity_year\n",
+        "ORDER BY a.activity_year"
+      ],
+      "usage_guidance": [
+        "admission_journey and hospital_operational_activity do not share patient-level or admission-level identifiers and must not be directly joined at row level.",
+        "Aggregate both tables to a common analytical dimension before combining them.",
+        "In this pattern, both tables are aggregated to shifted calendar year.",
+        "active_patient_count represents recorded daily care-unit presence and must not be interpreted as staffed-bed occupancy.",
+        "MIMIC dates are deidentified and shifted, so year-based results describe patterns within the dataset rather than real historical hospital activity."
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000215",
+      "question": [
+        "How does daily ICU monitoring activity compare with recorded hospital operational activity?"
+      ],
+      "sql": [
+        "WITH icu_by_date AS (\n",
+        "  SELECT\n",
+        "    clinical_date AS activity_date,\n",
+        "    COUNT(*) AS icu_stay_days,\n",
+        "    AVG(vital_observation_count) AS avg_vital_observations,\n",
+        "    AVG(lab_result_count) AS avg_lab_results\n",
+        "  FROM cdr_gold.analytics_mimic_iv.icu_clinical_monitoring\n",
+        "  GROUP BY clinical_date\n",
+        "),\n",
+        "operations_by_date AS (\n",
+        "  SELECT\n",
+        "    activity_date,\n",
+        "    COUNT(*) AS careunit_days,\n",
+        "    AVG(active_patient_count) AS avg_active_patients_per_careunit_day,\n",
+        "    AVG(total_patient_movement) AS avg_patient_movement_per_careunit_day\n",
+        "  FROM cdr_gold.analytics_mimic_iv.hospital_operational_activity\n",
+        "  GROUP BY activity_date\n",
+        ")\n",
+        "SELECT\n",
+        "  i.activity_date,\n",
+        "  i.icu_stay_days,\n",
+        "  i.avg_vital_observations,\n",
+        "  i.avg_lab_results,\n",
+        "  o.careunit_days,\n",
+        "  o.avg_active_patients_per_careunit_day,\n",
+        "  o.avg_patient_movement_per_careunit_day\n",
+        "FROM icu_by_date i\n",
+        "INNER JOIN operations_by_date o\n",
+        "  ON i.activity_date = o.activity_date\n",
+        "ORDER BY i.activity_date"
+      ],
+      "usage_guidance": [
+        "Do not directly join ICU stay-day rows to care-unit-day rows because both tables contain multiple rows per date.",
+        "First aggregate each table to the common date grain before joining.",
+        "Use this pattern for broad comparisons between ICU monitoring activity and recorded operational activity.",
+        "Describe resulting relationships as dataset-level patterns and do not infer operational or clinical causation.",
+        "MIMIC dates are shifted and should not be interpreted as real historical hospital dates."
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000216",
+      "question": [
+        "How do hospital admissions, ICU monitoring activity, and care-unit operational activity compare by year?"
+      ],
+      "sql": [
+        "WITH admissions_by_year AS (\n",
+        "  SELECT\n",
+        "    admission_year AS activity_year,\n",
+        "    COUNT(DISTINCT hadm_id) AS admissions,\n",
+        "    AVG(hospital_los_days) AS avg_hospital_los_days,\n",
+        "    AVG(CAST(mortality_flag AS DOUBLE)) AS observed_mortality_rate\n",
+        "  FROM cdr_gold.analytics_mimic_iv.admission_journey\n",
+        "  WHERE admission_year IS NOT NULL\n",
+        "  GROUP BY admission_year\n",
+        "),\n",
+        "icu_by_year AS (\n",
+        "  SELECT\n",
+        "    YEAR(clinical_date) AS activity_year,\n",
+        "    COUNT(*) AS icu_stay_days,\n",
+        "    COUNT(DISTINCT stay_id) AS icu_stays,\n",
+        "    AVG(vital_observation_count) AS avg_vital_observations_per_stay_day,\n",
+        "    AVG(lab_result_count) AS avg_lab_results_per_stay_day\n",
+        "  FROM cdr_gold.analytics_mimic_iv.icu_clinical_monitoring\n",
+        "  GROUP BY YEAR(clinical_date)\n",
+        "),\n",
+        "operations_by_year AS (\n",
+        "  SELECT\n",
+        "    activity_year,\n",
+        "    COUNT(*) AS careunit_days,\n",
+        "    AVG(active_patient_count) AS avg_active_patients_per_careunit_day,\n",
+        "    AVG(total_patient_movement) AS avg_patient_movement_per_careunit_day,\n",
+        "    AVG(CAST(high_activity_flag AS DOUBLE)) AS high_activity_rate\n",
+        "  FROM cdr_gold.analytics_mimic_iv.hospital_operational_activity\n",
+        "  GROUP BY activity_year\n",
+        ")\n",
+        "SELECT\n",
+        "  a.activity_year,\n",
+        "  a.admissions,\n",
+        "  a.avg_hospital_los_days,\n",
+        "  a.observed_mortality_rate,\n",
+        "  i.icu_stays,\n",
+        "  i.icu_stay_days,\n",
+        "  i.avg_vital_observations_per_stay_day,\n",
+        "  i.avg_lab_results_per_stay_day,\n",
+        "  o.careunit_days,\n",
+        "  o.avg_active_patients_per_careunit_day,\n",
+        "  o.avg_patient_movement_per_careunit_day,\n",
+        "  o.high_activity_rate\n",
+        "FROM admissions_by_year a\n",
+        "INNER JOIN icu_by_year i\n",
+        "  ON a.activity_year = i.activity_year\n",
+        "INNER JOIN operations_by_year o\n",
+        "  ON a.activity_year = o.activity_year\n",
+        "ORDER BY a.activity_year"
+      ],
+      "usage_guidance": [
+        "When using all three Gold tables together, first aggregate each table independently to a genuinely shared analytical grain.",
+        "Do not directly join the three source tables at their native grains.",
+        "This example uses shifted calendar year as the common grain.",
+        "Admission measures remain admission-level, ICU measures remain stay-day or stay-level summaries, and operational measures remain care-unit-day summaries.",
+        "Do not sum active_patient_count and interpret it as a hospital-wide unique patient count.",
+        "Do not interpret high_activity_rate as capacity utilisation or clinical severity.",
+        "MIMIC dates are deidentified and shifted, so year-based results describe patterns within this dataset rather than real historical hospital performance."
+      ]
+    }
+  ]
+}
