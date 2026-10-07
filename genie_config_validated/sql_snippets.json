@@ -1,0 +1,413 @@
+{
+  "sql_snippets": {
+    "filters": [
+      {
+        "id": "01f1b948bf771e12ba5c6f647c74f5f5",
+        "sql": [
+          "admission_journey.icu_flag = 1"
+        ],
+        "display_name": "ICU admissions",
+        "instruction": [
+          "An ICU admission is a hospital admission with at least one ICU stay. Count admissions with COUNT(DISTINCT hadm_id), not ICU stays."
+        ],
+        "synonyms": [
+          "ICU patients",
+          "went to ICU",
+          "needed ICU",
+          "ICU cases"
+        ]
+      },
+      {
+        "id": "01f1b94adaa61fd39ad9e23420655115",
+        "sql": [
+          "admission_journey.icu_flag = 0"
+        ],
+        "display_name": "Non-ICU admissions",
+        "instruction": [
+          "Admissions with no ICU stay during the hospital admission."
+        ],
+        "synonyms": [
+          "ward only",
+          "no ICU",
+          "general ward admissions"
+        ]
+      },
+      {
+        "id": "01f1b94af6561bbba8c2f8a7c5219ea6",
+        "sql": [
+          "admission_journey.mortality_flag = 1"
+        ],
+        "display_name": "Died in hospital",
+        "instruction": [
+          "Covers in-hospital deaths only. Deaths after discharge are not recorded in this table."
+        ],
+        "synonyms": [
+          "deaths",
+          "deceased",
+          "in-hospital death",
+          "died"
+        ]
+      },
+      {
+        "id": "01f1b94c4a341cd6a6e5779a1ccfd9b9",
+        "sql": [
+          "admission_journey.hospital_los_days >= 0"
+        ],
+        "display_name": "Valid LOS",
+        "instruction": [
+          "Apply to every hospital length of stay calculation as a safety guard."
+        ],
+        "synonyms": [
+          "valid length of stay"
+        ]
+      },
+      {
+        "id": "01f1b94c7959130bb66fb432b4dae830",
+        "sql": [
+          "admission_journey.icu_los_complete = true"
+        ],
+        "display_name": "Complete ICU LOS",
+        "instruction": [
+          "Apply whenever total_icu_los_days is used. Mention that incomplete ICU records were excluded."
+        ],
+        "synonyms": [
+          "complete ICU records"
+        ]
+      },
+      {
+        "id": "01f1c0de000000000000000000000015",
+        "sql": [
+          "icu_clinical_monitoring.icu_day_number > 1 AND icu_clinical_monitoring.icu_stay_complete AND icu_clinical_monitoring.clinical_date < TO_DATE(icu_clinical_monitoring.icu_outtime)"
+        ],
+        "display_name": "Full ICU days",
+        "instruction": [
+          "Excludes the partial first and last calendar days of each ICU stay. Use when comparing daily activity between groups."
+        ],
+        "synonyms": [
+          "complete ICU days",
+          "full days"
+        ]
+      },
+      {
+        "id": "01f1c0de000000000000000000000016",
+        "sql": [
+          "icu_clinical_monitoring.fluid_balance_complete = true"
+        ],
+        "display_name": "Complete fluid balance days",
+        "instruction": [
+          "Apply whenever net_fluid_balance_ml or fluid_balance_direction is used."
+        ],
+        "synonyms": [
+          "valid fluid balance",
+          "fluid recorded"
+        ]
+      },
+      {
+        "id": "01f1c0de000000000000000000000017",
+        "sql": [
+          "icu_clinical_monitoring.icu_stay_complete = true"
+        ],
+        "display_name": "Completed ICU stays",
+        "instruction": [
+          "Apply whenever icu_los_days is used."
+        ],
+        "synonyms": [
+          "finished ICU stays",
+          "stays with discharge time"
+        ]
+      },
+      {
+        "id": "01f1c0de000000000000000000000018",
+        "sql": [
+          "icu_clinical_monitoring.vital_warning_flag = true"
+        ],
+        "display_name": "ICU days with vital warning",
+        "instruction": [
+          "ICU days with at least one vital-sign warning."
+        ],
+        "synonyms": [
+          "warning days",
+          "days with warnings"
+        ]
+      },
+      {
+        "id": "01f1c0de000000000000000000000019",
+        "sql": [
+          "hospital_operational_activity.careunit NOT IN ('DISCHARGE LOUNGE', 'EMERGENCY DEPARTMENT OBSERVATION')"
+        ],
+        "display_name": "Inpatient care units",
+        "instruction": [
+          "Excludes the discharge lounge and ED observation, which are holding areas rather than inpatient wards."
+        ],
+        "synonyms": [
+          "wards only",
+          "inpatient units"
+        ]
+      }
+    ],
+    "expressions": [
+      {
+        "id": "01f1bad6a31318eda6fe112184cb4fed",
+        "sql": [
+          "CASE WHEN admission_journey.icu_flag = 1 THEN 'ICU admission' ELSE 'Non-ICU admission' END"
+        ],
+        "display_name": "ICU status",
+        "instruction": [
+          "Use to compare ICU and non-ICU admissions side by side."
+        ],
+        "synonyms": [
+          "ICU group",
+          "ICU vs non-ICU",
+          "ICU or not"
+        ]
+      },
+      {
+        "id": "01f1c0de00000000000000000000001a",
+        "sql": [
+          "CASE WHEN icu_clinical_monitoring.icu_day_number = 1 THEN 'First day' WHEN icu_clinical_monitoring.icu_stay_complete AND icu_clinical_monitoring.clinical_date = TO_DATE(icu_clinical_monitoring.icu_outtime) THEN 'Last day' ELSE 'Full day' END"
+        ],
+        "display_name": "ICU day position",
+        "instruction": [
+          "Shows whether an ICU day is the partial first day, the partial last day or a full day."
+        ],
+        "synonyms": [
+          "day type",
+          "partial day"
+        ]
+      }
+    ],
+    "measures": [
+      {
+        "id": "01f1bad619a012a098ae3af1dc2cf6bd",
+        "sql": [
+          "COUNT(DISTINCT admission_journey.hadm_id)"
+        ],
+        "display_name": "Total admissions",
+        "instruction": [
+          "Use for any question about how many admissions or hospitalisations. Never use COUNT(*) on other tables for this."
+        ],
+        "synonyms": [
+          "admissions",
+          "hospital admissions",
+          "hospitalisations",
+          "encounters",
+          "number of admissions"
+        ]
+      },
+      {
+        "id": "01f1bad637ab1ec0ab0843c68823e492",
+        "sql": [
+          "COUNT(DISTINCT admission_journey.subject_id)"
+        ],
+        "display_name": "Distinct patients",
+        "instruction": [
+          "Use when the question asks about patients or people. One patient can have many admissions, so this is always lower than total admissions."
+        ],
+        "synonyms": [
+          "patients",
+          "unique patients",
+          "number of patients",
+          "people"
+        ]
+      },
+      {
+        "id": "01f1bad649ea1e7392ff262f4d4a02c2",
+        "sql": [
+          "MEDIAN(admission_journey.hospital_los_days)"
+        ],
+        "display_name": "Median hospital LOS",
+        "instruction": [
+          "Headline measure for length of stay because LOS is heavily right-skewed. When the user asks for an average LOS, report this first and show Mean hospital LOS alongside it. Apply the Valid LOS filter."
+        ],
+        "synonyms": [
+          "median length of stay",
+          "typical LOS",
+          "typical length of stay",
+          "average LOS",
+          "average length of stay"
+        ]
+      },
+      {
+        "id": "01f1bad65ab21c42b8d879626012a224",
+        "sql": [
+          "AVG(admission_journey.hospital_los_days)"
+        ],
+        "display_name": "Mean hospital LOS",
+        "instruction": [
+          "Report alongside Median hospital LOS, clearly labelled as the mean. Long stays over 100 days pull the mean upwards, so do not present it alone as the typical stay."
+        ],
+        "synonyms": [
+          "mean length of stay",
+          "mean LOS",
+          "arithmetic mean LOS"
+        ]
+      },
+      {
+        "id": "01f1bad66dea1ee189b215879434e7c2",
+        "sql": [
+          "100.0 * SUM(admission_journey.icu_flag) / COUNT(DISTINCT admission_journey.hadm_id)"
+        ],
+        "display_name": "ICU admission rate",
+        "instruction": [
+          "Percentage of hospital admissions with at least one ICU stay. The denominator is all admissions in the current filter. Round to two decimals and show the counts used."
+        ],
+        "synonyms": [
+          "ICU rate",
+          "percent ICU",
+          "ICU percentage",
+          "proportion needing ICU"
+        ]
+      },
+      {
+        "id": "01f1bad6859a1dd09b0dd5380f29d860",
+        "sql": [
+          "100.0 * AVG(admission_journey.mortality_flag)"
+        ],
+        "display_name": "In-hospital mortality rate",
+        "instruction": [
+          "Percentage of admissions ending in death during the hospital stay. Does not include deaths after discharge. Describe differences between groups as associations, not causes."
+        ],
+        "synonyms": [
+          "mortality rate",
+          "death rate",
+          "mortality",
+          "percent died"
+        ]
+      },
+      {
+        "id": "01f1c0de00000000000000000000000c",
+        "sql": [
+          "COUNT(DISTINCT icu_clinical_monitoring.stay_id)"
+        ],
+        "display_name": "ICU stays",
+        "instruction": [
+          "Use for any count of ICU stays. Never use COUNT(*) on the ICU table for this, because each stay has one row per day."
+        ],
+        "synonyms": [
+          "ICU stays",
+          "number of ICU stays",
+          "ICU episodes"
+        ]
+      },
+      {
+        "id": "01f1c0de00000000000000000000000d",
+        "sql": [
+          "COUNT(DISTINCT icu_clinical_monitoring.stay_id, icu_clinical_monitoring.clinical_date)"
+        ],
+        "display_name": "ICU days",
+        "instruction": [
+          "Counts calendar days spent in ICU. First and last days are partial days."
+        ],
+        "synonyms": [
+          "ICU days",
+          "ICU bed days",
+          "patient days in ICU"
+        ]
+      },
+      {
+        "id": "01f1c0de00000000000000000000000e",
+        "sql": [
+          "MEDIAN(icu_clinical_monitoring.vital_observation_count)"
+        ],
+        "display_name": "Median vitals per ICU day",
+        "instruction": [
+          "Headline measure for monitoring intensity. For comparisons between groups, apply the Full ICU days filter."
+        ],
+        "synonyms": [
+          "monitoring activity",
+          "vital sign activity",
+          "observations per day"
+        ]
+      },
+      {
+        "id": "01f1c0de00000000000000000000000f",
+        "sql": [
+          "100.0 * AVG(CASE WHEN icu_clinical_monitoring.vital_warning_flag THEN 1 ELSE 0 END)"
+        ],
+        "display_name": "Percent days with vital warning",
+        "instruction": [
+          "Share of ICU days with at least one vital-sign warning. The table does not record which measurement triggered the warning."
+        ],
+        "synonyms": [
+          "warning rate",
+          "vital warning rate",
+          "share of days with warnings"
+        ]
+      },
+      {
+        "id": "01f1c0de000000000000000000000010",
+        "sql": [
+          "100.0 * AVG(CASE WHEN icu_clinical_monitoring.abnormal_lab_flag THEN 1 ELSE 0 END)"
+        ],
+        "display_name": "Percent days with abnormal lab",
+        "instruction": [
+          "Based on six selected tests and the source abnormal flag only. True on about 85% of ICU days, so it separates groups poorly."
+        ],
+        "synonyms": [
+          "abnormal lab rate",
+          "share of days with abnormal labs"
+        ]
+      },
+      {
+        "id": "01f1c0de000000000000000000000011",
+        "sql": [
+          "MEDIAN(icu_clinical_monitoring.net_fluid_balance_ml)"
+        ],
+        "display_name": "Median daily net fluid balance",
+        "instruction": [
+          "Only meaningful on days where fluid_balance_complete is true. Report in millilitres."
+        ],
+        "synonyms": [
+          "fluid balance",
+          "net fluid",
+          "daily fluid balance"
+        ]
+      },
+      {
+        "id": "01f1c0de000000000000000000000012",
+        "sql": [
+          "SUM(hospital_operational_activity.active_patient_count)"
+        ],
+        "display_name": "Unit patient-days",
+        "instruction": [
+          "Total patient-days in a care unit over the whole period. Partial days count as a full day. Never group by date."
+        ],
+        "synonyms": [
+          "patient days",
+          "workload",
+          "unit workload",
+          "bed days"
+        ]
+      },
+      {
+        "id": "01f1c0de000000000000000000000013",
+        "sql": [
+          "SUM(hospital_operational_activity.admission_arrival_count)"
+        ],
+        "display_name": "Unit direct admissions",
+        "instruction": [
+          "Admissions whose first inpatient unit was this care unit, over the whole period."
+        ],
+        "synonyms": [
+          "direct admissions",
+          "admitted to unit",
+          "first unit admissions"
+        ]
+      },
+      {
+        "id": "01f1c0de000000000000000000000014",
+        "sql": [
+          "SUM(hospital_operational_activity.active_icu_patient_count)"
+        ],
+        "display_name": "Unit ICU patient-days",
+        "instruction": [
+          "Patient-days with an active ICU stay in the care unit over the whole period."
+        ],
+        "synonyms": [
+          "ICU patient days",
+          "ICU workload by unit"
+        ]
+      }
+    ]
+  }
+}
