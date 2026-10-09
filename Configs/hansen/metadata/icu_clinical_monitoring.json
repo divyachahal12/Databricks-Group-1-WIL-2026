@@ -1,0 +1,179 @@
+{
+  "table": "cdr_gold.analytics_mimic_iv.icu_clinical_monitoring",
+  "description": "Gold analytical table containing one row per ICU stay per clinical date. It summarises ICU context, patient demographics, vital-sign monitoring, laboratory activity, fluid balance, procedures and dataset-relative activity indicators. The source data comes from the deidentified MIMIC-IV research dataset, and dates are shifted.",
+  "grain": "One row per ICU stay per clinical date.",
+  "primary_key": [
+    "stay_id",
+    "clinical_date"
+  ],
+  "columns": {
+    "subject_id": {
+      "description": "Deidentified patient identifier."
+    },
+    "hadm_id": {
+      "description": "Hospital admission identifier associated with the ICU stay."
+    },
+    "stay_id": {
+      "description": "Unique ICU stay identifier."
+    },
+    "clinical_date": {
+      "description": "Calendar date represented by this ICU monitoring row. Together with stay_id, defines the grain of the table."
+    },
+    "icu_day_number": {
+      "description": "Sequential ICU day number beginning at 1 on the ICU admission date."
+    },
+    "gender": {
+      "description": "Recorded patient gender from the MIMIC-IV patient table."
+    },
+    "age_at_admission": {
+      "description": "Derived patient age at the time of hospital admission."
+    },
+    "age_group": {
+      "description": "Derived age band based on age at hospital admission."
+    },
+    "admission_type": {
+      "description": "Hospital admission type associated with the ICU stay."
+    },
+    "admission_mortality_flag": {
+      "description": "Indicates whether the patient died during the overall hospital admission. This is an admission-level outcome repeated across ICU days."
+    },
+    "icu_careunit": {
+      "description": "Care unit associated with the ICU stay. Used as the main care-unit dimension for ICU analysis."
+    },
+    "security_careunit": {
+      "description": "Care-unit field intended for care-unit-based row-level security."
+    },
+    "icu_intime": {
+      "description": "Timestamp when the ICU stay began."
+    },
+    "icu_outtime": {
+      "description": "Timestamp when the ICU stay ended. May be null for incomplete ICU stays."
+    },
+    "icu_los_days": {
+      "description": "Recorded ICU length of stay in days."
+    },
+    "icu_stay_complete": {
+      "description": "Indicates whether an ICU outtime is available for the stay."
+    },
+    "vital_observation_count": {
+      "description": "Number of retained bedside vital-sign observations recorded for the ICU stay-day."
+    },
+    "distinct_vital_measurements": {
+      "description": "Number of selected vital-sign concepts available for the day, from 0 to 4: heart rate, respiratory rate, SpO2 and temperature."
+    },
+    "vital_warning_count": {
+      "description": "Number of selected vital observations carrying the source warning indicator."
+    },
+    "vital_warning_flag": {
+      "description": "True when at least one selected vital observation has a source warning indicator."
+    },
+    "heart_rate_avg": {
+      "description": "Daily average heart rate in beats per minute after broad plausibility filtering."
+    },
+    "heart_rate_min": {
+      "description": "Daily minimum heart rate in beats per minute after broad plausibility filtering."
+    },
+    "heart_rate_max": {
+      "description": "Daily maximum heart rate in beats per minute after broad plausibility filtering."
+    },
+    "resp_rate_avg": {
+      "description": "Daily average respiratory rate in breaths per minute after broad plausibility filtering."
+    },
+    "resp_rate_min": {
+      "description": "Daily minimum respiratory rate in breaths per minute after broad plausibility filtering."
+    },
+    "resp_rate_max": {
+      "description": "Daily maximum respiratory rate in breaths per minute after broad plausibility filtering."
+    },
+    "spo2_avg": {
+      "description": "Daily average pulse oximetry oxygen saturation percentage after broad plausibility filtering."
+    },
+    "spo2_min": {
+      "description": "Daily minimum pulse oximetry oxygen saturation percentage after broad plausibility filtering."
+    },
+    "spo2_max": {
+      "description": "Daily maximum pulse oximetry oxygen saturation percentage after broad plausibility filtering."
+    },
+    "temperature_c_avg": {
+      "description": "Daily average temperature in degrees Celsius. Fahrenheit observations are converted to Celsius."
+    },
+    "temperature_c_min": {
+      "description": "Daily minimum temperature in degrees Celsius."
+    },
+    "temperature_c_max": {
+      "description": "Daily maximum temperature in degrees Celsius."
+    },
+    "lab_result_count": {
+      "description": "Number of retained selected laboratory results for the ICU stay-day."
+    },
+    "distinct_lab_tests": {
+      "description": "Number of selected laboratory concepts represented on the ICU stay-day."
+    },
+    "abnormal_lab_count": {
+      "description": "Number of selected laboratory results explicitly flagged as abnormal in the source data."
+    },
+    "abnormal_lab_flag": {
+      "description": "True when at least one selected laboratory result is explicitly flagged as abnormal."
+    },
+    "creatinine_avg": {
+      "description": "Daily average blood creatinine result in mg/dL."
+    },
+    "hemoglobin_avg": {
+      "description": "Daily average blood hemoglobin result in g/dL."
+    },
+    "wbc_avg": {
+      "description": "Daily average blood white blood cell count in K/uL."
+    },
+    "sodium_avg": {
+      "description": "Daily average blood sodium result in mEq/L."
+    },
+    "potassium_avg": {
+      "description": "Daily average blood potassium result in mEq/L."
+    },
+    "lactate_avg": {
+      "description": "Daily average blood lactate result in mmol/L after removal of clearly corrupted extreme values."
+    },
+    "fluid_input_recorded": {
+      "description": "Indicates whether retained ICU fluid input data is available for the stay-day."
+    },
+    "fluid_output_recorded": {
+      "description": "Indicates whether retained ICU fluid output data is available for the stay-day."
+    },
+    "fluid_input_ml": {
+      "description": "Total retained ICU fluid input allocated to the clinical day in millilitres."
+    },
+    "fluid_output_ml": {
+      "description": "Total retained ICU fluid output recorded on the clinical day in millilitres."
+    },
+    "net_fluid_balance_ml": {
+      "description": "Daily fluid input minus fluid output in millilitres. Populated only when both input and output are recorded."
+    },
+    "fluid_balance_complete": {
+      "description": "True when both retained fluid input and retained fluid output are available for the stay-day."
+    },
+    "fluid_balance_direction": {
+      "description": "Direction of daily fluid balance: POSITIVE, NEGATIVE, BALANCED or INCOMPLETE."
+    },
+    "procedure_count": {
+      "description": "Number of ICU procedure orders beginning on the clinical day."
+    },
+    "distinct_procedure_types": {
+      "description": "Number of distinct procedure item IDs beginning on the clinical day."
+    },
+    "high_vital_monitoring_flag": {
+      "description": "Dataset-relative analytical flag for ICU days with at least 104 retained vital observations, based on approximately the 95th percentile. Not a clinical risk threshold."
+    },
+    "high_lab_activity_flag": {
+      "description": "Dataset-relative analytical flag for ICU days with at least 17 selected lab results, based on approximately the 95th percentile. Not a clinical risk threshold."
+    },
+    "high_procedure_activity_flag": {
+      "description": "Dataset-relative analytical flag for ICU days with at least 8 procedures, based on approximately the 95th percentile. Not a clinical risk threshold."
+    },
+    "large_fluid_imbalance_flag": {
+      "description": "Dataset-relative analytical flag where absolute complete daily fluid balance is at least 4465.29 mL, approximately the 95th percentile. Not a clinical risk threshold."
+    },
+    "_gold_timestamp": {
+      "description": "Timestamp when the Gold table row was generated."
+    }
+  }
+}

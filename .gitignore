@@ -1,0 +1,9 @@
+# Generated Genie build output
+build/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
