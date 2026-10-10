@@ -43,12 +43,6 @@
     "security_careunit": {
       "description": "Care-unit field intended for care-unit-based row-level security."
     },
-    "icu_intime": {
-      "description": "Timestamp when the ICU stay began."
-    },
-    "icu_outtime": {
-      "description": "Timestamp when the ICU stay ended. May be null for incomplete ICU stays."
-    },
     "icu_los_days": {
       "description": "Recorded ICU length of stay in days."
     },

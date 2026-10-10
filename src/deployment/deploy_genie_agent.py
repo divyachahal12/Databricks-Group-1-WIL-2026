@@ -26,8 +26,8 @@ def get_workspace_client():
     """
     Create an authenticated Databricks workspace client.
 
-    When run inside a Databricks notebook, WorkspaceClient()
-    uses the notebook's default Databricks authentication.
+    When run inside Databricks, WorkspaceClient() uses the
+    workspace's default authentication.
     """
     return WorkspaceClient()
 
@@ -38,7 +38,7 @@ def get_workspace_client():
 
 def get_genie_space(space_id):
     """
-    Retrieve the current Genie space including its serialized config.
+    Retrieve a Genie space including its serialized configuration.
     """
     workspace = get_workspace_client()
 
@@ -56,13 +56,85 @@ def get_genie_space(space_id):
     return response.json()
 
 
+def list_genie_spaces():
+    """
+    Retrieve all Genie spaces available in the current workspace.
+
+    Handles pagination automatically.
+    """
+    workspace = get_workspace_client()
+
+    spaces = []
+    page_token = None
+
+    while True:
+        params = {
+            "page_size": 100
+        }
+
+        if page_token:
+            params["page_token"] = page_token
+
+        response = requests.get(
+            f"{workspace.config.host}/api/2.0/genie/spaces",
+            headers=workspace.config.authenticate(),
+            params=params,
+            timeout=60
+        )
+
+        response.raise_for_status()
+
+        result = response.json()
+
+        spaces.extend(
+            result.get("spaces", [])
+        )
+
+        page_token = result.get(
+            "next_page_token"
+        )
+
+        if not page_token:
+            break
+
+    return spaces
+
+
+def find_genie_space_by_title(title):
+    """
+    Find a Genie space by exact title.
+
+    Returns None when the space does not yet exist.
+    """
+    spaces = list_genie_spaces()
+
+    matches = [
+        space
+        for space in spaces
+        if space.get("title") == title
+    ]
+
+    if len(matches) > 1:
+        raise ValueError(
+            f"Multiple Genie spaces found with title '{title}'. "
+            "The deployment requires a unique Genie space title."
+        )
+
+    if not matches:
+        return None
+
+    return matches[0]
+
+
 def backup_genie_space(space_id):
     """
-    Save the current Genie configuration before deployment.
+    Save the current Genie space before updating it.
 
-    The backup is written to build/, which is excluded from Git.
+    Backups are written to build/, which is excluded from Git.
     """
-    current_space = get_genie_space(space_id)
+    current_space = get_genie_space(
+        space_id
+    )
 
     BUILD_DIR.mkdir(
         parents=True,
@@ -97,83 +169,204 @@ def backup_genie_space(space_id):
 # -------------------------------------------------------------------
 
 def deploy_genie_agent(
-    space_id,
-    expected_title=None,
+    title,
+    warehouse_id,
+    description=None,
+    parent_path=None,
     dry_run=True
 ):
     """
-    Build and deploy the repository Genie configuration.
+    Create or update the repository-managed Genie space.
+
+    If a space with the supplied title exists, its current
+    configuration is backed up and updated.
+
+    If no matching space exists, a new Genie space is created.
 
     Parameters
     ----------
-    space_id : str
-        Existing Databricks Genie Space ID.
+    title : str
+        Genie space title.
+
+    warehouse_id : str
+        SQL warehouse used by the Genie space.
+
+    description : str, optional
+        Genie space description.
+
+    parent_path : str, optional
+        Workspace folder in which the Genie space is stored.
 
     dry_run : bool
-        When True, validate and preview the deployment without
-        updating the Genie Agent.
-
-        When False, PATCH the existing Genie Agent.
+        When True, validate the repository configuration and
+        report the intended action without changing Genie.
     """
 
-    # Build the new config from repository JSON files
-    serialized_space = build_genie_config_string()
+    if not title:
+        raise ValueError(
+            "A Genie space title is required."
+        )
 
-    # Retrieve and back up the current Agent configuration
-    current_space, backup_file = backup_genie_space(
-        space_id
+    if not warehouse_id:
+        raise ValueError(
+            "A SQL warehouse ID is required."
+        )
+
+    # Build and validate repository Genie configuration
+    serialized_space = (
+        build_genie_config_string()
     )
 
-    current_etag = current_space.get("etag")
-
-    current_title = current_space.get("title")
-
-    if expected_title and current_title != expected_title:
-        raise ValueError(
-            f"Genie Agent title mismatch. "
-            f"Expected '{expected_title}', "
-            f"but found '{current_title}'."
-        )
-
-    
-
-    print("Current Genie Agent retrieved successfully.")
-    print(f"Space ID: {space_id}")
-    print(f"Title: {current_space.get('title')}")
-    print(f"ETag: {current_etag}")
-    print(f"Backup: {backup_file}")
-    print()
-
-    # Stop here when running in preview mode
-    if dry_run:
-        print("DRY RUN ONLY")
-        print("No changes were applied to the Genie Agent.")
-        print()
-        print(
-            "Repository configuration built successfully "
-            "and is ready for deployment."
-        )
-
-        return {
-            "status": "dry_run",
-            "space_id": space_id,
-            "etag": current_etag,
-            "backup_file": str(backup_file)
-        }
-
-    # Databricks recommends using the current ETag so a deployment
-    # cannot silently overwrite changes made since the GET request.
-    payload = {
-        "serialized_space": serialized_space
-    }
-
-    if current_etag:
-        payload["etag"] = current_etag
+    # Look for the space in the current workspace
+    existing_space = (
+        find_genie_space_by_title(title)
+    )
 
     workspace = get_workspace_client()
 
+    # ---------------------------------------------------------------
+    # Create
+    # ---------------------------------------------------------------
+
+    if existing_space is None:
+
+        print("Genie deployment")
+        print()
+        print(f"Title: {title}")
+        print(f"Warehouse ID: {warehouse_id}")
+        print("Action: CREATE")
+        print()
+
+        if dry_run:
+            print("DRY RUN ONLY")
+            print(
+                "Repository configuration built successfully."
+            )
+            print(
+                "No Genie space was created."
+            )
+
+            return {
+                "status": "dry_run_create",
+                "action": "create",
+                "title": title,
+                "warehouse_id": warehouse_id
+            }
+
+        payload = {
+            "title": title,
+            "warehouse_id": warehouse_id,
+            "serialized_space": serialized_space
+        }
+
+        if description:
+            payload["description"] = description
+
+        if parent_path:
+            payload["parent_path"] = parent_path
+
+        response = requests.post(
+            f"{workspace.config.host}/api/2.0/genie/spaces",
+            headers={
+                **workspace.config.authenticate(),
+                "Content-Type": "application/json"
+            },
+            json=payload,
+            timeout=60
+        )
+
+        response.raise_for_status()
+
+        created_space = response.json()
+
+        print(
+            "Genie space created successfully."
+        )
+        print(
+            f"Space ID: "
+            f"{created_space.get('space_id')}"
+        )
+        print(
+            f"Title: "
+            f"{created_space.get('title')}"
+        )
+
+        return created_space
+
+    # ---------------------------------------------------------------
+    # Update
+    # ---------------------------------------------------------------
+
+    space_id = existing_space["space_id"]
+
+    if dry_run:
+        current_space = get_genie_space(
+            space_id
+        )
+
+        print("Genie deployment")
+        print()
+        print(f"Title: {title}")
+        print(f"Space ID: {space_id}")
+        print(f"Warehouse ID: {warehouse_id}")
+        print("Action: UPDATE")
+        print()
+
+        print("DRY RUN ONLY")
+        print(
+            "Repository configuration built successfully."
+        )
+        print(
+            "No changes were applied to the Genie space."
+        )
+
+        return {
+            "status": "dry_run_update",
+            "action": "update",
+            "space_id": space_id,
+            "title": current_space.get("title"),
+            "etag": current_space.get("etag")
+        }
+
+    # Back up the existing space before changing it
+    current_space, backup_file = (
+        backup_genie_space(space_id)
+    )
+
+    current_etag = current_space.get(
+        "etag"
+    )
+
+    print("Genie deployment")
+    print()
+    print(f"Title: {title}")
+    print(f"Space ID: {space_id}")
+    print(f"Warehouse ID: {warehouse_id}")
+    print("Action: UPDATE")
+    print(f"Backup: {backup_file}")
+    print()
+
+    payload = {
+        "serialized_space": serialized_space,
+        "title": title,
+        "warehouse_id": warehouse_id
+    }
+
+    if description:
+        payload["description"] = description
+
+    if parent_path:
+        payload["parent_path"] = parent_path
+
+    # Prevent accidental overwrite of concurrent changes
+    if current_etag:
+        payload["etag"] = current_etag
+
     response = requests.patch(
-        f"{workspace.config.host}/api/2.0/genie/spaces/{space_id}",
+        (
+            f"{workspace.config.host}"
+            f"/api/2.0/genie/spaces/{space_id}"
+        ),
         headers={
             **workspace.config.authenticate(),
             "Content-Type": "application/json"
@@ -186,10 +379,21 @@ def deploy_genie_agent(
 
     updated_space = response.json()
 
-    print("Genie Agent deployed successfully.")
-    print(f"Space ID: {updated_space.get('space_id')}")
-    print(f"Title: {updated_space.get('title')}")
-    print(f"New ETag: {updated_space.get('etag')}")
+    print(
+        "Genie space updated successfully."
+    )
+    print(
+        f"Space ID: "
+        f"{updated_space.get('space_id')}"
+    )
+    print(
+        f"Title: "
+        f"{updated_space.get('title')}"
+    )
+    print(
+        f"New ETag: "
+        f"{updated_space.get('etag')}"
+    )
 
     return updated_space
 
@@ -200,20 +404,25 @@ def deploy_genie_agent(
 
 def validate_deployed_agent(space_id):
     """
-    Retrieve the deployed Agent and summarise the main config counts.
+    Retrieve the deployed Genie space and summarise the main
+    repository-managed configuration counts.
     """
-    space = get_genie_space(space_id)
+    space = get_genie_space(
+        space_id
+    )
 
-    serialized = space.get(
+    serialized_space = space.get(
         "serialized_space"
     )
 
-    if not serialized:
+    if not serialized_space:
         raise ValueError(
             "The Genie space did not return serialized_space."
         )
 
-    config = json.loads(serialized)
+    config = json.loads(
+        serialized_space
+    )
 
     tables = (
         config
@@ -260,6 +469,8 @@ def validate_deployed_agent(space_id):
     print()
 
     for key, value in summary.items():
-        print(f"{key}: {value}")
+        print(
+            f"{key}: {value}"
+        )
 
     return summary

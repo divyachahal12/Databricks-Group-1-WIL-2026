@@ -71,6 +71,14 @@
         "args": {
           "column": "careunit"
         }
+      },
+      {
+        "fn": "flag_valid_category",
+        "args": {
+          "column": "careunit",
+          "invalid_values": ["UNKNOWN"],
+          "flag_column": "careunit_valid_flag"
+        }
       }
     ]
   },
@@ -284,6 +292,54 @@
           "column": "flag",
           "value": "Unrecorded"
         }
+      },
+      {
+        "fn": "flag_null",
+        "args": {
+          "column": "valuenum",
+          "flag_column": "numeric_value_valid_flag"
+        }
+      },
+      {
+        "fn": "flag_equals",
+        "args": {
+          "column": "flag",
+          "equals_value": "abnormal",
+          "flag_column": "abnormal_lab_flag"
+        }
+      },
+      {
+        "fn": "flag_out_of_range",
+        "args": {
+          "column": "valuenum",
+          "min_value": 0,
+          "max_value": 50,
+          "flag_column": "lactate_implausible_flag",
+          "filter_column": "itemid",
+          "filter_value": 50813
+        }
+      },
+      {
+        "fn": "flag_out_of_range",
+        "args": {
+          "column": "valuenum",
+          "min_value": 0,
+          "max_value": 50,
+          "flag_column": "lactate_implausible_flag",
+          "filter_column": "itemid",
+          "filter_value": 52442
+        }
+      },
+      {
+        "fn": "flag_out_of_range",
+        "args": {
+          "column": "valuenum",
+          "min_value": 0,
+          "max_value": 50,
+          "flag_column": "lactate_implausible_flag",
+          "filter_column": "itemid",
+          "filter_value": 53154
+        }
       }
     ]
   },
@@ -303,7 +359,28 @@
       "stay_id"
     ],
     "needs_surrogate_key": false,
-    "cleaning_rules": []
+    "cleaning_rules": [
+      {
+        "fn": "flag_null",
+        "args": {
+          "column": "outtime",
+          "flag_column": "icu_stay_complete_flag"
+        }
+      },
+      {
+        "fn": "flag_null",
+        "args": {
+          "column": "los",
+          "flag_column": "los_availability_flag"
+        }
+      },
+      {
+        "fn": "standardize_category",
+        "args": {
+          "column": "first_careunit"
+        }
+      }
+    ]
   },
   "poe": {
     "silver_notebook": "orders_meds_icu",
@@ -484,7 +561,23 @@
       "storetime"
     ],
     "needs_surrogate_key": false,
-    "cleaning_rules": []
+    "cleaning_rules": [
+      {
+        "fn": "flag_valid_nonnegative",
+        "args": {
+          "column": "value",
+          "flag_column": "output_value_valid_flag"
+        }
+      },
+      {
+        "fn": "flag_extreme_high",
+        "args": {
+          "column": "value",
+          "threshold": 50000,
+          "flag_column": "output_value_extreme_flag"
+        }
+      }
+    ]
   },
   "ingredientevents": {
     "silver_notebook": "orders_meds_icu",
@@ -536,6 +629,43 @@
         "args": {
           "column": "continueinnextdept"
         }
+      },
+      {
+        "fn": "convert_unit_linear",
+        "args": {
+          "value_column": "amount",
+          "unit_column": "amountuom",
+          "unit_map": {
+            "ML": [0, 1],
+            "L": [0, 1000],
+            "CM3": [0, 1],
+            "ΜL": [0, 0.001]
+          },
+          "new_column": "amount_ml"
+        }
+      },
+      {
+        "fn": "flag_valid_nonnegative",
+        "args": {
+          "column": "amount",
+          "flag_column": "input_amount_valid_flag"
+        }
+      },
+      {
+        "fn": "flag_valid_interval",
+        "args": {
+          "start_column": "starttime",
+          "end_column": "endtime",
+          "flag_column": "input_duration_valid_flag"
+        }
+      },
+      {
+        "fn": "flag_extreme_high",
+        "args": {
+          "column": "amount_ml",
+          "threshold": 50000,
+          "flag_column": "input_amount_extreme_flag"
+        }
       }
     ]
   },
@@ -546,6 +676,18 @@
       "_natural_key"
     ],
     "needs_surrogate_key": true,
+    "natural_key_columns": [
+      "subject_id",
+      "hadm_id",
+      "stay_id",
+      "caregiver_id",
+      "charttime",
+      "itemid",
+      "value",
+      "valuenum",
+      "valueuom",
+      "warning"
+    ],
     "cleaning_rules": [
       {
         "fn": "drop_columns",
@@ -553,6 +695,73 @@
           "columns": [
             "storetime"
           ]
+        }
+      },
+      {
+        "fn": "flag_null",
+        "args": {
+          "column": "valuenum",
+          "flag_column": "numeric_value_valid_flag"
+        }
+      },
+      {
+        "fn": "flag_out_of_range",
+        "args": {
+          "column": "valuenum",
+          "min_value": 0,
+          "max_value": 400,
+          "flag_column": "vital_implausible_flag",
+          "filter_column": "itemid",
+          "filter_value": 220045
+        }
+      },
+      {
+        "fn": "flag_out_of_range",
+        "args": {
+          "column": "valuenum",
+          "min_value": 0,
+          "max_value": 150,
+          "flag_column": "vital_implausible_flag",
+          "filter_column": "itemid",
+          "filter_value": 220210
+        }
+      },
+      {
+        "fn": "flag_out_of_range",
+        "args": {
+          "column": "valuenum",
+          "min_value": 0,
+          "max_value": 100,
+          "flag_column": "vital_implausible_flag",
+          "filter_column": "itemid",
+          "filter_value": 220277
+        }
+      },
+      {
+        "fn": "standardize_category",
+        "args": {
+          "column": "valueuom"
+        }
+      },
+      {
+        "fn": "convert_unit_linear",
+        "args": {
+          "value_column": "valuenum",
+          "unit_column": "valueuom",
+          "unit_map": {
+            "°F": [-32, 0.5555555555555556],
+            "°C": [0, 1]
+          },
+          "new_column": "temperature_c"
+        }
+      },
+      {
+        "fn": "flag_in_range",
+        "args": {
+          "column": "temperature_c",
+          "min_value": 10,
+          "max_value": 50,
+          "flag_column": "temperature_plausible_flag"
         }
       }
     ]
