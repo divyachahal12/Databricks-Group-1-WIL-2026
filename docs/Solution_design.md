@@ -54,14 +54,53 @@ Every layer follows the same pattern:
                 02_silver_clinical_events
                 03_silver_orders_meds_icu
             gold_layer/ 
+                dimensions/
+                    01_build_dimensions
+                facts/
+                    02_build_admission_star
+                    03_build_icu_daily_fact
+                    04_build_operational_activity_fact
+                marts/
+                    05_build_consumption_views
         utils/
             00_silver_utils
+        deployment/
+            01_apply_gold_metadata
+            02_deploy_genie_agent
+            03_apply_gold_governance
         configs/
             bronze_config.json
             silver_config.json
-        mimic_iv/ 
-
-
+            metadata/
+                admission_journey.json
+                hospital_operational_activity.json
+                icu_clinical_monitoring.json
+            genie/ 
+                instructions.json
+                sample_questions.json
+                sql_examples.json
+                benchmarks.json
+                joins.json
+                sql_snippets.json
+        governance/
+            sql/
+                01_catalogs.sql 
+                02_schemas.sql
+                03_volumes.sql
+                04_grants.sql
+                05_masking_policies.sql
+                06_row_filters.sql
+                07_tags.sql
+            app/
+                app.py
+                app.yaml
+                requirements.txt
+                README.md
+            docs/
+                roles_and_groups.md
+                masking_policies.md
+                tags.md
+                app_deployment.md
 
 ---
 
