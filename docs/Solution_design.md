@@ -100,7 +100,6 @@ Every layer follows the same pattern:
                 roles_and_groups.md
                 masking_policies.md
                 tags.md
-                app_deployment.md
 
 ---
 
@@ -470,6 +469,53 @@ Neither consumer changes the Gold data model. Both read from the governed views 
 
 ---
 ## 5. Reusability & Onboarding
+The accelerator is designed so that onboarding a new dataset requires new configs and new notebooks that follow established patterns. It does not require modifying existing engines or workflows.
+
+### 5.1 What Changes and What Does Not
+
+| Component | Changes per new dataset |
+|-----------|--------------------------|
+| Bronze driver notebook | No |
+| Silver driver notebooks | No |
+| Gold dimension notebook | Yes, new dimensions follow the existing pattern |
+| Gold fact notebook | Yes, new facts follow the existing pattern |
+| Gold view notebook | Yes, new views follow the existing pattern |
+| Metadata config | Yes |
+| Genie config | Yes |
+| Governance notebook(TO BE UPDATED) | Yes, group and view lists updated |
+| Bronze and Silver configs | Yes |
+| Unity Catalog objects | Yes |
+| Workflows | Parameter changes only |
+
+### 5.2 Layer-by-Layer Reusability
+
+| Layer | Reusable without change | Requires new config | Requires new code |
+|-------|------------------------|---------------------|-------------------|
+| Bronze | Full | New `bronze_config.json` | No |
+| Silver | Full | New `silver_config.json` | No |
+| Gold dimensions | Pattern | No | New dimension notebook per dimension |
+| Gold facts | Pattern | No | New fact notebook per fact |
+| Gold views | Pattern | No | New view SQL per view |
+| Metadata deployment | Full | New metadata JSON | No |
+| Governance deployment(TO BE UPDATED) | Full | Updated group and view lists | No |
+| Genie deployment | Full | New Genie JSON files | No |
+
+### 5.3 Onboarding Steps
+
+To add a new clinical dataset:
+
+1. Write `bronze_config.json` (source paths, table list, merge keys)
+2. Write `silver_config.json` (column mappings, quality rules, routing)
+3. Write new dimension, fact, and view notebooks by copying existing patterns
+4. Write metadata JSON files under `configs/metadata/`
+5. Write Genie JSON files under `configs/genie/`
+6. Update the governance notebook with new groups and views(TO BE UPDATED)
+7. Create Unity Catalog objects for the new dataset
+8. Point the workflows at the new configs
+9. Run the Bronze, Silver, and Gold workflows in order
+10. Run the deployment notebooks in order
+
+Steps 1, 2, 4, 5, 6, 7, and 8 require no code. Steps 3 and 9 require new notebooks that follow existing patterns.
 
 ---
 ## 6. AI/BI Genie
@@ -704,6 +750,7 @@ Governance is applied at Unity Catalog level, not in pipeline code.
 
 ## 9. Orchestration
 
+### 9.1 Pipeline Workflow
 Databricks Workflow with:
 
 | Task | Depends On | Purpose |
@@ -713,23 +760,54 @@ Databricks Workflow with:
 | `silver_clinical_events` | `bronze_ingest` | Cleans clinical event tables |
 | `silver_orders_meds_icu` | `bronze_ingest` | Cleans orders/ICU tables |
 
+The three Silver tasks run in parallel after Bronze completes.
 
-**Job parameters:**
+### 9.2 Gold Workflow
+
+| Task | Depends On | Purpose |
+|------|------------|---------|
+| `gold_dimensions` | none | Build all shared dimensions |
+| `gold_admissions` | `gold_dimensions` | Build `fact_admission` and both bridges |
+| `gold_icu_daily` | `gold_dimensions` | Build `fact_icu_daily_monitoring` |
+| `gold_operational` | `gold_dimensions` | Build `fact_careunit_daily_activity` |
+| `gold_consumption_views` | all three fact tasks | Build the three governed views |
+
+The three fact tasks run in parallel after dimensions complete. The views task runs only after all facts succeed.
+
+### 9.3 Shared Run ID(VERIFY)
+
+Each pipeline run uses one `run_id`:
+
+- The Bronze task generates the run ID.
+- Bronze publishes it as a Databricks task value.
+- Each Silver task reads it via `get_shared_run_id()`, fetching from the upstream task key `bronze_ingest`.
+- If a Silver notebook is run standalone, it falls back to a fresh UUID and logs a warning.
+
+The same `run_id` appears in every Bronze audit row and every Silver audit row for that run, enabling end-to-end traceability.
+
+The Gold build workflow does not currently share the run ID with Bronze and Silver. Gold uses a separate `_gold_timestamp` audit column per row instead.
+
+
+### 9.4 Job parameters:
 
 | Key | Purpose |
 |-----|---------|
 | `run_id` | Shared identifier (`{{job.start_time.iso_datetime}}`) |
 | `table_filter` | Optional comma-separated list for testing |
 
-### Design Decisions
+### 9.5 Design Decisions
 
-| Decision | Alternatives | Why This Choice |
-|----------|--------------|-----------------|
-| Workflows over Airflow | Airflow is more flexible | Native Databricks; no external infra |
-| Parallel Silver | Sequential Silver | Faster; 3 tasks fit comfortably |
+| Decision | What Was Built | Note |
+|----------|----------------|------|
+| Orchestrator | Databricks Workflows | Native, no external infrastructure |
+| Silver tasks | Parallel after Bronze | Three tasks run concurrently |
+| Gold facts | Parallel after dimensions | Three tasks run concurrently |
+| Run ID | Databricks task values | Bronze publishes, Silver reads |
+| Standalone fallback | Fresh UUID with warning | Prevents silent divergence of audit trail |
+| Test parameter | `table_filter` | Enables fast iteration |
 
 
-### Use Case Extensions
+### 9.6 Use Case Extensions
 
 | Scenario | Extension |
 |----------|-----------|
@@ -737,6 +815,8 @@ Databricks Workflow with:
 | **Multiple clusters** | Use task-level cluster config |
 | **External dependencies** | Add pre-flight HTTP task |
 | **Notification chains** | Add webhook task on completion |
+| **Gold run ID sharing** | Extend the task value pattern to Gold tasks |
+
 
 ---
 
