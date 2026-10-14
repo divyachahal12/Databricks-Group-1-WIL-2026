@@ -1,0 +1,25 @@
+{
+  "join_specs": [
+    {
+      "id": "00000000000000000000000000000301",
+      "left": {
+        "identifier": "cdr_gold.analytics_mimic_iv.icu_clinical_monitoring",
+        "alias": "icu"
+      },
+      "right": {
+        "identifier": "cdr_gold.analytics_mimic_iv.admission_journey",
+        "alias": "admission"
+      },
+      "sql": [
+        "`icu`.`hadm_id` = `admission`.`hadm_id`",
+        "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+      ],
+      "comment": [
+        "Links ICU stay-day records to their associated hospital admission using hadm_id."
+      ],
+      "instruction": [
+        "Use this join when combining ICU clinical activity with hospital admission-level information. Because icu_clinical_monitoring can contain many rows per hadm_id, aggregate ICU data to the required admission-level grain before joining when calculating admission-level measures."
+      ]
+    }
+  ]
+}
