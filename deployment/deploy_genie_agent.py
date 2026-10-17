@@ -13,7 +13,7 @@ from build_genie_config import build_genie_config_string
 # -------------------------------------------------------------------
 
 THIS_FILE = Path(__file__).resolve()
-REPO_ROOT = THIS_FILE.parents[2]
+REPO_ROOT = THIS_FILE.parents[1]
 
 BUILD_DIR = REPO_ROOT / "build"
 

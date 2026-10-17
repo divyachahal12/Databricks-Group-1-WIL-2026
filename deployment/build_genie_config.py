@@ -8,7 +8,7 @@ from pathlib import Path
 # -------------------------------------------------------------------
 
 THIS_FILE = Path(__file__).resolve()
-REPO_ROOT = THIS_FILE.parents[2]
+REPO_ROOT = THIS_FILE.parents[1]
 
 GENIE_CONFIG_DIR = REPO_ROOT / "Configs" / "genie"
 METADATA_DIR = REPO_ROOT / "Configs" / "metadata"
