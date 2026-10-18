@@ -1,0 +1,40 @@
+{
+  "sample_questions": [
+    {
+      "id": "00000000000000000000000000000101",
+      "question": [
+        "How many hospital admissions are in the dataset?"
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000102",
+      "question": [
+        "What is the typical hospital length of stay?"
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000103",
+      "question": [
+        "What percentage of admissions required ICU care?"
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000104",
+      "question": [
+        "Which ICU care units have the highest clinical monitoring activity?"
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000105",
+      "question": [
+        "What is the typical ICU length of stay by care unit?"
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000106",
+      "question": [
+        "Which care units carry the most patient workload?"
+      ]
+    }
+  ]
+}

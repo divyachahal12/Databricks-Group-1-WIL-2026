@@ -1,0 +1,673 @@
+{
+  "questions": [
+    {
+      "id": "00000000000000000000000000000401",
+      "question": [
+        "What is the average hospital length of stay by age group?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT\n",
+            "  age_group,\n",
+            "  COUNT(DISTINCT hadm_id) AS admissions,\n",
+            "  ROUND(MEDIAN(hospital_los_days), 2) AS median_los_days,\n",
+            "  ROUND(AVG(hospital_los_days), 2) AS mean_los_days\n",
+            "FROM cdr_gold.analytics_mimic_iv.admission_journey\n",
+            "WHERE hospital_los_days >= 0\n",
+            "GROUP BY age_group\n",
+            "ORDER BY age_group"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000402",
+      "question": [
+        "What is the observed mortality rate for each initial clinical service?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT\n",
+            "  initial_service,\n",
+            "  COUNT(DISTINCT hadm_id) AS admissions,\n",
+            "  SUM(mortality_flag) AS deaths,\n",
+            "  ROUND(100.0 * AVG(mortality_flag), 2) AS mortality_pct\n",
+            "FROM cdr_gold.analytics_mimic_iv.admission_journey\n",
+            "WHERE initial_service <> 'UNKNOWN'\n",
+            "GROUP BY initial_service\n",
+            "HAVING COUNT(DISTINCT hadm_id) >= 100\n",
+            "ORDER BY mortality_pct DESC"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000403",
+      "question": [
+        "What is the average number of lab results per ICU stay-day for each ICU care unit?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT\n",
+            "  icu_careunit,\n",
+            "  COUNT(DISTINCT stay_id) AS icu_stays,\n",
+            "  COUNT(*) AS full_icu_days,\n",
+            "  ROUND(MEDIAN(lab_result_count), 2) AS median_labs_per_day,\n",
+            "  ROUND(AVG(lab_result_count), 2) AS mean_labs_per_day\n",
+            "FROM cdr_gold.analytics_mimic_iv.icu_clinical_monitoring\n",
+            "WHERE icu_day_number > 1\n",
+            "  AND icu_stay_complete\n",
+            "  AND icu_day_number <= FLOOR(icu_los_days)\n",
+            "GROUP BY icu_careunit\n",
+            "HAVING COUNT(DISTINCT stay_id) >= 100\n",
+            "ORDER BY median_labs_per_day DESC"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000404",
+      "question": [
+        "Which ICU care units have the highest proportion of days with large fluid imbalance?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT\n",
+            "  icu_careunit,\n",
+            "  COUNT(*) AS complete_fluid_full_days,\n",
+            "  COUNT(DISTINCT stay_id) AS stay_count,\n",
+            "  ROUND(100.0 * AVG(CASE WHEN large_fluid_imbalance_flag THEN 1 ELSE 0 END), 2) AS pct_days_large_imbalance\n",
+            "FROM cdr_gold.analytics_mimic_iv.icu_clinical_monitoring\n",
+            "WHERE icu_day_number > 1\n",
+            "  AND icu_stay_complete\n",
+            "  AND icu_day_number <= FLOOR(icu_los_days)\n",
+            "  AND fluid_balance_complete = true\n",
+            "GROUP BY icu_careunit\n",
+            "HAVING COUNT(DISTINCT stay_id) >= 100\n",
+            "ORDER BY pct_days_large_imbalance DESC"
+          ]
+        }
+      ]
+    },
+        {
+      "id": "00000000000000000000000000000405",
+      "question": [
+        "What are the average daily arrivals and departures for each care unit?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT\n",
+            "  careunit,\n",
+            "  COUNT(*) AS days_recorded,\n",
+            "  ROUND(AVG(patient_arrival_count), 2) AS avg_daily_arrivals,\n",
+            "  ROUND(AVG(patient_departure_count), 2) AS avg_daily_departures,\n",
+            "  SUM(active_patient_count) AS patient_days\n",
+            "FROM cdr_gold.analytics_mimic_iv.hospital_operational_activity\n",
+            "WHERE careunit NOT IN ('DISCHARGE LOUNGE', 'EMERGENCY DEPARTMENT OBSERVATION')\n",
+            "GROUP BY careunit\n",
+            "HAVING SUM(active_patient_count) >= 1000\n",
+            "ORDER BY avg_daily_arrivals DESC"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000406",
+      "question": [
+        "Is the proportion of high-activity care-unit days different between weekdays and weekends?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT\n",
+            "  CASE WHEN weekend_flag = 1 THEN 'Weekend' ELSE 'Weekday' END AS day_type,\n",
+            "  COUNT(*) AS careunit_days,\n",
+            "  SUM(high_activity_flag) AS high_activity_days,\n",
+            "  AVG(CAST(high_activity_flag AS DOUBLE)) AS high_activity_rate\n",
+            "FROM cdr_gold.analytics_mimic_iv.hospital_operational_activity\n",
+            "GROUP BY weekend_flag\n",
+            "ORDER BY weekend_flag"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000407",
+      "question": [
+        "Do admissions with any abnormal laboratory activity during an ICU stay have different average hospital length of stay?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "WITH icu_by_admission AS (\n",
+            "  SELECT\n",
+            "    hadm_id,\n",
+            "    MAX(CASE WHEN abnormal_lab_flag THEN 1 ELSE 0 END) AS had_abnormal_lab\n",
+            "  FROM cdr_gold.analytics_mimic_iv.icu_clinical_monitoring\n",
+            "  GROUP BY hadm_id\n",
+            ")\n",
+            "SELECT\n",
+            "  CASE WHEN i.had_abnormal_lab = 1 THEN 'Had abnormal lab during ICU stay' ELSE 'No abnormal lab during ICU stay' END AS abnormal_lab_group,\n",
+            "  COUNT(DISTINCT a.hadm_id) AS admissions,\n",
+            "  ROUND(MEDIAN(a.hospital_los_days), 2) AS median_los_days,\n",
+            "  ROUND(AVG(a.hospital_los_days), 2) AS mean_los_days\n",
+            "FROM cdr_gold.analytics_mimic_iv.admission_journey a\n",
+            "JOIN icu_by_admission i\n",
+            "  ON a.hadm_id = i.hadm_id\n",
+            "WHERE a.hospital_los_days >= 0\n",
+            "  AND a.icu_flag = 1\n",
+            "GROUP BY i.had_abnormal_lab\n",
+            "ORDER BY i.had_abnormal_lab DESC"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000408",
+      "question": [
+        "How do hospital admission numbers and average care-unit patient movement compare by year?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "WITH admissions_by_year AS (\n",
+            "  SELECT\n",
+            "    admission_year AS activity_year,\n",
+            "    COUNT(DISTINCT hadm_id) AS admissions\n",
+            "  FROM cdr_gold.analytics_mimic_iv.admission_journey\n",
+            "  WHERE admission_year IS NOT NULL\n",
+            "  GROUP BY admission_year\n",
+            "),\n",
+            "operations_by_year AS (\n",
+            "  SELECT\n",
+            "    activity_year,\n",
+            "    COUNT(*) AS careunit_days,\n",
+            "    AVG(total_patient_movement) AS avg_patient_movement_per_careunit_day\n",
+            "  FROM cdr_gold.analytics_mimic_iv.hospital_operational_activity\n",
+            "  GROUP BY activity_year\n",
+            ")\n",
+            "SELECT\n",
+            "  a.activity_year,\n",
+            "  a.admissions,\n",
+            "  o.careunit_days,\n",
+            "  o.avg_patient_movement_per_careunit_day\n",
+            "FROM admissions_by_year a\n",
+            "INNER JOIN operations_by_year o\n",
+            "  ON a.activity_year = o.activity_year\n",
+            "ORDER BY a.activity_year"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000409",
+      "question": [
+        "How does daily ICU lab activity compare with daily hospital patient movement?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "WITH icu_by_date AS (\n",
+            "  SELECT\n",
+            "    clinical_date AS activity_date,\n",
+            "    COUNT(*) AS icu_stay_days,\n",
+            "    AVG(lab_result_count) AS avg_lab_results_per_stay_day\n",
+            "  FROM cdr_gold.analytics_mimic_iv.icu_clinical_monitoring\n",
+            "  GROUP BY clinical_date\n",
+            "),\n",
+            "operations_by_date AS (\n",
+            "  SELECT\n",
+            "    activity_date,\n",
+            "    COUNT(*) AS careunit_days,\n",
+            "    AVG(total_patient_movement) AS avg_patient_movement_per_careunit_day\n",
+            "  FROM cdr_gold.analytics_mimic_iv.hospital_operational_activity\n",
+            "  GROUP BY activity_date\n",
+            ")\n",
+            "SELECT\n",
+            "  i.activity_date,\n",
+            "  i.icu_stay_days,\n",
+            "  i.avg_lab_results_per_stay_day,\n",
+            "  o.careunit_days,\n",
+            "  o.avg_patient_movement_per_careunit_day\n",
+            "FROM icu_by_date i\n",
+            "INNER JOIN operations_by_date o\n",
+            "  ON i.activity_date = o.activity_date\n",
+            "ORDER BY i.activity_date"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000410",
+      "question": [
+        "By year, show hospital admissions, ICU stay-days, and the proportion of care-unit days classified as high activity."
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "WITH admissions_by_year AS (\n",
+            "  SELECT\n",
+            "    admission_year AS activity_year,\n",
+            "    COUNT(DISTINCT hadm_id) AS admissions\n",
+            "  FROM cdr_gold.analytics_mimic_iv.admission_journey\n",
+            "  WHERE admission_year IS NOT NULL\n",
+            "  GROUP BY admission_year\n",
+            "),\n",
+            "icu_by_year AS (\n",
+            "  SELECT\n",
+            "    YEAR(clinical_date) AS activity_year,\n",
+            "    COUNT(*) AS icu_stay_days\n",
+            "  FROM cdr_gold.analytics_mimic_iv.icu_clinical_monitoring\n",
+            "  GROUP BY YEAR(clinical_date)\n",
+            "),\n",
+            "operations_by_year AS (\n",
+            "  SELECT\n",
+            "    activity_year,\n",
+            "    COUNT(*) AS careunit_days,\n",
+            "    AVG(CAST(high_activity_flag AS DOUBLE)) AS high_activity_rate\n",
+            "  FROM cdr_gold.analytics_mimic_iv.hospital_operational_activity\n",
+            "  GROUP BY activity_year\n",
+            ")\n",
+            "SELECT\n",
+            "  a.activity_year,\n",
+            "  a.admissions,\n",
+            "  i.icu_stay_days,\n",
+            "  o.careunit_days,\n",
+            "  o.high_activity_rate\n",
+            "FROM admissions_by_year a\n",
+            "INNER JOIN icu_by_year i\n",
+            "  ON a.activity_year = i.activity_year\n",
+            "INNER JOIN operations_by_year o\n",
+            "  ON a.activity_year = o.activity_year\n",
+            "ORDER BY a.activity_year"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000411",
+      "question": [
+        "How many hospital admissions are recorded?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT\n",
+            "  COUNT(DISTINCT hadm_id) AS hospital_admissions\n",
+            "FROM cdr_gold.analytics_mimic_iv.admission_journey"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000412",
+      "question": [
+        "How many different patients were admitted to hospital?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT\n",
+            "  COUNT(DISTINCT subject_id) AS patients\n",
+            "FROM cdr_gold.analytics_mimic_iv.admission_journey"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000413",
+      "question": [
+        "What is the typical length of a hospital stay?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT\n",
+            "  ROUND(MEDIAN(hospital_los_days), 2) AS median_los_days,\n",
+            "  ROUND(AVG(hospital_los_days), 2) AS mean_los_days\n",
+            "FROM cdr_gold.analytics_mimic_iv.admission_journey\n",
+            "WHERE\n",
+            "  hospital_los_days >= 0"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000414",
+      "question": [
+        "How many admissions needed ICU care?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT\n",
+            "  SUM(icu_flag) AS icu_admissions,\n",
+            "  ROUND(100.0 * SUM(icu_flag) / COUNT(DISTINCT hadm_id), 2) AS icu_admission_pct\n",
+            "FROM cdr_gold.analytics_mimic_iv.admission_journey"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000415",
+      "question": [
+        "What is the median hospital length of stay for each age group?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT\n",
+            "  age_group,\n",
+            "  COUNT(DISTINCT hadm_id) AS admissions,\n",
+            "  ROUND(MEDIAN(hospital_los_days), 2) AS median_los_days,\n",
+            "  ROUND(AVG(hospital_los_days), 2) AS mean_los_days\n",
+            "FROM cdr_gold.analytics_mimic_iv.admission_journey\n",
+            "WHERE\n",
+            "  hospital_los_days >= 0\n",
+            "GROUP BY\n",
+            "  age_group\n",
+            "ORDER BY\n",
+            "  age_group"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000416",
+      "question": [
+        "What is the in-hospital mortality rate for each admitting service?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT\n",
+            "  initial_service,\n",
+            "  COUNT(DISTINCT hadm_id) AS admissions,\n",
+            "  SUM(mortality_flag) AS deaths,\n",
+            "  ROUND(100.0 * AVG(mortality_flag), 2) AS mortality_pct\n",
+            "FROM cdr_gold.analytics_mimic_iv.admission_journey\n",
+            "WHERE\n",
+            "  initial_service <> 'UNKNOWN'\n",
+            "GROUP BY\n",
+            "  initial_service\n",
+            "HAVING\n",
+            "  COUNT(DISTINCT hadm_id) >= 100\n",
+            "ORDER BY\n",
+            "  mortality_pct DESC"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000417",
+      "question": [
+        "How many ICU stays and ICU days are recorded?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT\n",
+            "  COUNT(DISTINCT stay_id) AS icu_stays,\n",
+            "  COUNT(DISTINCT stay_id, clinical_date) AS icu_days\n",
+            "FROM cdr_gold.analytics_mimic_iv.icu_clinical_monitoring"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000418",
+      "question": [
+        "What is the average ICU length of stay?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT\n",
+            "  ROUND(MEDIAN(los), 2) AS median_icu_los_days,\n",
+            "  ROUND(AVG(los), 2) AS mean_icu_los_days\n",
+            "FROM (\n",
+            "  SELECT\n",
+            "    stay_id,\n",
+            "    MAX(icu_los_days) AS los\n",
+            "  FROM cdr_gold.analytics_mimic_iv.icu_clinical_monitoring\n",
+            "  WHERE\n",
+            "    icu_stay_complete\n",
+            "  GROUP BY\n",
+            "    stay_id\n",
+            ")"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000419",
+      "question": [
+        "Which ICU care units have the most lab results per day?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT\n",
+            "  icu_careunit,\n",
+            "  COUNT(DISTINCT stay_id) AS icu_stays,\n",
+            "  ROUND(MEDIAN(lab_result_count), 1) AS median_labs_per_day\n",
+            "FROM cdr_gold.analytics_mimic_iv.icu_clinical_monitoring\n",
+            "WHERE\n",
+            "  icu_day_number > 1 AND icu_stay_complete AND icu_day_number <= FLOOR(icu_los_days)\n",
+            "GROUP BY\n",
+            "  icu_careunit\n",
+            "HAVING\n",
+            "  COUNT(DISTINCT stay_id) >= 100\n",
+            "ORDER BY\n",
+            "  median_labs_per_day DESC"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000420",
+      "question": [
+        "Which ICU care units have the highest share of days with a large fluid imbalance?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT\n",
+            "  icu_careunit,\n",
+            "  COUNT(*) AS complete_fluid_days,\n",
+            "  ROUND(100.0 * AVG(CASE WHEN large_fluid_imbalance_flag THEN 1 ELSE 0 END), 2) AS pct_large_imbalance\n",
+            "FROM cdr_gold.analytics_mimic_iv.icu_clinical_monitoring\n",
+            "WHERE\n",
+            "  fluid_balance_complete\n",
+            "  AND icu_day_number > 1\n",
+            "  AND icu_stay_complete\n",
+            "  AND icu_day_number <= FLOOR(icu_los_days)\n",
+            "GROUP BY\n",
+            "  icu_careunit\n",
+            "HAVING\n",
+            "  COUNT(DISTINCT stay_id) >= 100\n",
+            "ORDER BY\n",
+            "  pct_large_imbalance DESC"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000421",
+      "question": [
+        "Which ICU care units recorded the most vital-sign observations in total?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT\n",
+            "  icu_careunit,\n",
+            "  COUNT(DISTINCT stay_id) AS icu_stays,\n",
+            "  SUM(vital_observation_count) AS vital_observations,\n",
+            "  ROUND(100.0 * SUM(vital_observation_count) / SUM(SUM(vital_observation_count)) OVER (), 2) AS pct_of_all_vital_observations\n",
+            "FROM cdr_gold.analytics_mimic_iv.icu_clinical_monitoring\n",
+            "GROUP BY icu_careunit\n",
+            "ORDER BY vital_observations DESC"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000422",
+      "question": [
+        "Do admissions with a vital-sign warning in ICU have a longer hospital stay?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "WITH icu_warn AS (\n",
+            "  SELECT\n",
+            "    hadm_id,\n",
+            "    MAX(CASE WHEN vital_warning_flag THEN 1 ELSE 0 END) AS had_warning\n",
+            "  FROM cdr_gold.analytics_mimic_iv.icu_clinical_monitoring\n",
+            "  GROUP BY hadm_id\n",
+            ")\n",
+            "SELECT\n",
+            "  CASE\n",
+            "    WHEN w.had_warning = 1 THEN 'ICU admission with vital warning'\n",
+            "    ELSE 'ICU admission without vital warning'\n",
+            "  END AS warning_group,\n",
+            "  COUNT(DISTINCT a.hadm_id) AS admissions,\n",
+            "  ROUND(MEDIAN(a.hospital_los_days), 2) AS median_los_days,\n",
+            "  ROUND(AVG(a.hospital_los_days), 2) AS mean_los_days,\n",
+            "  ROUND(PERCENTILE(a.hospital_los_days, 0.9), 2) AS p90_los_days\n",
+            "FROM cdr_gold.analytics_mimic_iv.admission_journey a\n",
+            "JOIN icu_warn w\n",
+            "  ON a.hadm_id = w.hadm_id\n",
+            "WHERE a.hospital_los_days >= 0\n",
+            "  AND a.icu_flag = 1\n",
+            "GROUP BY w.had_warning\n",
+            "ORDER BY w.had_warning DESC"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000423",
+      "question": [
+        "How many ICU days does each admitting service account for?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT\n",
+            "  a.initial_service,\n",
+            "  COUNT(DISTINCT i.stay_id) AS icu_stays,\n",
+            "  COUNT(DISTINCT i.stay_id, i.clinical_date) AS icu_days,\n",
+            "  ROUND(100.0 * COUNT(DISTINCT i.stay_id, i.clinical_date) / SUM(COUNT(DISTINCT i.stay_id, i.clinical_date)) OVER (), 2) AS pct_of_all_icu_days\n",
+            "FROM cdr_gold.analytics_mimic_iv.icu_clinical_monitoring AS i\n",
+            "JOIN cdr_gold.analytics_mimic_iv.admission_journey AS a\n",
+            "  ON i.hadm_id = a.hadm_id\n",
+            "WHERE a.initial_service <> 'UNKNOWN'\n",
+            "GROUP BY a.initial_service\n",
+            "ORDER BY icu_days DESC"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000424",
+      "question": [
+        "Which inpatient care units have the most patient-days?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT\n",
+            "  careunit,\n",
+            "  SUM(active_patient_count) AS patient_days,\n",
+            "  ROUND(100.0 * SUM(active_patient_count) / SUM(SUM(active_patient_count)) OVER (), 2) AS pct_of_all_patient_days\n",
+            "FROM cdr_gold.analytics_mimic_iv.hospital_operational_activity\n",
+            "WHERE careunit NOT IN ('DISCHARGE LOUNGE', 'EMERGENCY DEPARTMENT OBSERVATION')\n",
+            "GROUP BY careunit\n",
+            "ORDER BY patient_days DESC"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000425",
+      "question": [
+        "Which care units take the most direct admissions?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT\n",
+            "  careunit,\n",
+            "  SUM(admission_arrival_count) AS direct_admissions,\n",
+            "  ROUND(\n",
+            "    100.0 * SUM(admission_arrival_count) / SUM(SUM(admission_arrival_count)) OVER (),\n",
+            "    2\n",
+            "  ) AS pct_of_all_direct_admissions\n",
+            "FROM cdr_gold.analytics_mimic_iv.hospital_operational_activity\n",
+            "WHERE\n",
+            "  NOT careunit IN ('DISCHARGE LOUNGE', 'EMERGENCY DEPARTMENT OBSERVATION')\n",
+            "GROUP BY\n",
+            "  careunit\n",
+            "ORDER BY\n",
+            "  direct_admissions DESC"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000000000000000000000000426",
+      "question": [
+        "What is the average hospital length of stay by admission type?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT\n",
+            "  admission_type,\n",
+            "  COUNT(DISTINCT hadm_id) AS admissions,\n",
+            "  ROUND(MEDIAN(hospital_los_days), 2) AS median_los_days,\n",
+            "  ROUND(AVG(hospital_los_days), 2) AS mean_los_days\n",
+            "FROM cdr_gold.analytics_mimic_iv.admission_journey\n",
+            "WHERE hospital_los_days >= 0\n",
+            "GROUP BY admission_type\n",
+            "HAVING COUNT(DISTINCT hadm_id) >= 100\n",
+            "ORDER BY median_los_days DESC"
+          ]
+        }
+      ]
+    }
+  ]
+}
