@@ -10,8 +10,8 @@ from pathlib import Path
 THIS_FILE = Path(__file__).resolve()
 REPO_ROOT = THIS_FILE.parents[1]
 
-GENIE_CONFIG_DIR = REPO_ROOT / "Configs" / "genie"
-METADATA_DIR = REPO_ROOT / "Configs" / "metadata"
+GENIE_CONFIG_DIR = REPO_ROOT / "configs" / "genie"
+METADATA_DIR = REPO_ROOT / "configs" / "metadata"
 
 BUILD_DIR = REPO_ROOT / "build"
 OUTPUT_FILE = BUILD_DIR / "serialized_space.json"

@@ -9,7 +9,7 @@ from pathlib import Path
 THIS_FILE = Path(__file__).resolve()
 REPO_ROOT = THIS_FILE.parents[1]
 
-METADATA_DIR = REPO_ROOT / "Configs" / "metadata"
+METADATA_DIR = REPO_ROOT / "configs" / "metadata"
 
 
 # -------------------------------------------------------------------
