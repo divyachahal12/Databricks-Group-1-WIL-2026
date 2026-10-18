@@ -742,6 +742,54 @@ The notebook supports both first-time deployment and updates. If the space exist
 
 Governance is applied at Unity Catalog level, not in pipeline code.
 
+**Purpose:** Enforce role-based access control (RBAC) at both the data layer (Unity Catalog and Gold views) and the application layer (Streamlit app) to ensure users only see the data and tools relevant to their role.
+
+**Components:** Unity Catalog, Gold governed views, Streamlit Databricks App.
+
+### 8.1 Overview
+
+Governance in this accelerator is applied using a defence in depth approach. It is not just a single configuration. It operates at two distinct layers:
+
+1. **Data Layer:** Row-level filtering and column-level masking are enforced directly inside the Gold consumption views using `is_account_group_member()`.
+2. **Application Layer:** The Streamlit app reads the logged-in user's group membership and routes them to the correct dashboard and Genie room.
+
+This ensures that even if a user accesses the database directly, they cannot see data outside their role. If they use the Streamlit app, they are presented with a curated, role specific interface.
+
+### 8.2 Role Definitions
+
+Three distinct Databricks user groups govern access. These groups are mapped to specific analytical domains.
+
+| Group Name | Persona | Analytical Focus | Data Access Scope |
+|------------|---------|------------------|-------------------|
+| `healthcare_admins` | Administrators | Full system oversight, clinical outcomes, and operational metrics. | All dimensions, facts, and bridges. Unmasked diagnosis data. |
+| `healthcare_hospital_operations` | Operations Staff | Patient flow, care unit activity, transfer movements, and admissions. | Admissions, operational activity, and patient/date/careunit dimensions. No diagnosis bridges. |
+| `healthcare_researchers` | Clinical Researchers | ICU monitoring, clinical outcomes, and diagnosis/procedure analysis. | ICU monitoring, admissions, diagnosis/procedure bridges, and dimensions. No operational activity fact. |
+
+### 8.3 Data-Level Access (Gold Views)
+
+The Gold layer uses a star schema. Access to specific facts and dimensions is controlled by the three roles.
+
+* **Admins:** Have visibility across the entire Gold layer. They can query all facts, dimensions, and bridges. Diagnosis descriptions are unmasked.
+* **Operations :** Have visibility over `fact_careunit_daily_activity`, `fact_icu_daily_monitoring`, `fact_admission`, and the shared dimensions (`dim_date`, `dim_careunit`, `dim_patient`, `dim_service`). They do not have access to diagnosis or procedure bridges. Diagnosis fields are masked as `RESTRICTED`.
+* **Researchers :** Have visibility over `fact_icu_daily_monitoring`, `fact_admission`, `bridge_admission_diagnosis`, `bridge_admission_procedure`, and the shared dimensions. They do not have access to the operational activity fact (`fact_careunit_daily_activity`).
+
+This is implemented inside the view SQL. For example, the `hospital_operational_activity` view includes:
+
+```sql
+WHERE is_account_group_member('healthcare_admins')
+   OR is_account_group_member('healthcare_hospital_operations')
+```
+
+And the admission_journey view masks diagnosis columns using:
+
+```sql
+CASE
+    WHEN is_account_group_member('healthcare_admins')
+        OR is_account_group_member('healthcare_researchers')
+    THEN COALESCE(dx.icd_code, 'UNKNOWN')
+    ELSE 'RESTRICTED'
+END AS primary_diagnosis_code
+```
 
 ---
 
