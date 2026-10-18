@@ -11,9 +11,9 @@
 
 ## 1. Overview
 
-This document describes the architecture of a reusable Clinical Data Repository (CDR) solution accelerator built on Databricks. The accelerator implements the Medallion architecture using a config-driven pattern, separating orchestration from logic and declaring dataset-specific behaviour in JSON config files.
+This document describes the architecture of a reusable Clinical Data Repository (CDR) solution accelerator built on Databricks. The accelerator implements a Medallion architecture, with Bronze and Silver using a config-driven processing pattern and Gold using reusable dimensional modelling patterns to produce business-ready analytical models and governed consumption views.
 
-MIMIC-IV serves as the reference implementation. The design goal: onboarding a new clinical dataset requires writing new configs - not new notebooks.
+MIMIC-IV serves as the reference implementation. The design aims to minimise the work required to onboard a new clinical dataset by reusing common ingestion, cleaning, deployment and governance patterns, while allowing dataset-specific Gold models to be developed where analytical requirements differ.
 
 ---
 
@@ -21,27 +21,34 @@ MIMIC-IV serves as the reference implementation. The design goal: onboarding a n
 
 | Principle | Description |
 |-----------|-------------|
-| **Config-driven behaviour** | Dataset-specific logic lives in JSON configs |
-| **Separation of orchestration and logic** | Driver notebooks orchestrate; shared utils contain logic |
-| **Medallion layering** | Bronze (raw), Silver (cleaned), Gold (dimensional) |
-| **Zero-trust governance** | PII/PHI masked by default; RBAC via Unity Catalog |
-| **Auditability** | Every run logged with run ID, row counts, timing, errors |
-| **Bounded parallelism** | Independent tasks run concurrently via Workflows |
-| **Three-level namespace** | All tables use `<catalog>.<schema>.<table>` |
+| **Config-driven ingestion and cleaning** | Dataset-specific Bronze and Silver behaviour is declared in JSON configuration |
+| **Separation of orchestration and reusable logic** | Driver notebooks orchestrate processing while shared utilities contain reusable transformation logic |
+| **Medallion layering** | Bronze stores raw data, Silver cleans and standardises it, and Gold provides analytical models |
+| **Least-privilege governance** | Unity Catalog groups, governed views, row filtering and selective column masking restrict access by role |
+| **Auditability** | Bronze and Silver processing record run IDs, row counts, timing and errors |
+| **Bounded parallelism** | Independent workflow tasks run concurrently where dependencies allow |
+| **Three-level namespace** | Data objects use `<catalog>.<schema>.<table>` naming |
+| **Governed consumption layer** | Dashboards, Genie and applications consume governed Gold views rather than underlying fact and dimension tables |
 
 ---
 
 ## 3. The Framework Pattern
 
-Every layer follows the same pattern:
+Bronze and Silver follow a shared config-driven processing pattern:
 
 | Component | Role | Knows | Doesn't Know |
 |-----------|------|-------|--------------|
-| **Driver notebook** | Orchestration | Which tables, when to run | How to clean/aggregate |
-| **Shared utils notebook** | Reusable logic | How to ingest, clean, write | Which dataset it operates on |
-| **JSON config** | Declarative behaviour | What columns, keys, rules | How to execute |
+| **Driver notebook** | Orchestration | Which tables to process and when | Detailed transformation implementation |
+| **Shared utilities** | Reusable logic | How to ingest, clean, validate and write | Which specific dataset is being processed |
+| **JSON config** | Declarative behaviour | Tables, keys, mappings and processing rules | How those rules are executed |
 
-**The rule:** logic in utils. Orchestration in drivers. Behaviour in config.
+The general rule for Bronze and Silver is:
+
+**Reusable logic in utilities. Orchestration in drivers. Dataset behaviour in configuration.**
+
+Gold follows a different pattern because analytical modelling is more heterogeneous. Gold notebooks explicitly define dimensions, facts, bridges and governed consumption views while following common modelling and validation conventions.
+
+Metadata and Genie deployment return to a config-driven pattern so that documentation and semantic-layer behaviour can be version controlled and reproduced.
 
 ### Repository Structure
 
@@ -66,8 +73,12 @@ Every layer follows the same pattern:
             00_silver_utils
         deployment/
             01_apply_gold_metadata
-            02_deploy_genie_agent
-            03_apply_gold_governance
+            02_apply_gold_governance
+            03_deploy_genie_agent
+            apply_gold_metadata.py
+            build_genie_config.py
+            deploy_genie_agent.py
+            
         configs/
             bronze_config.json
             silver_config.json
@@ -279,13 +290,26 @@ Some tables require logic that cannot be expressed as declarative rules. These a
 
 ### 4.3 Gold Layer
 
-**Purpose:** The Gold layer builds business-ready dimensional models and governed consumption views on top of Silver. It is structured as a reusable pattern so that any clinical dataset can be modelled the same way.
+**Purpose:** The Gold layer builds business-ready dimensional models and governed consumption views on top of Silver. It follows reusable modelling patterns while allowing dataset-specific analytical models to be implemented where required.
 
-**Build notebooks:** `drivers/gold_layer/dimensions/01_build_dimensions`, `drivers/gold_layer/facts/02_build_admission_star`, `drivers/gold_layer/facts/03_build_icu_daily_fact`, `drivers/gold_layer/facts/04_build_operational_activity_fact`, `drivers/gold_layer/marts/05_build_consumption_views`
+**Build notebooks:**
 
-**Deployment notebooks:** `deployment/01_apply_gold_metadata`, `deployment/02_deploy_genie_agent`, `deployment/03_apply_gold_governance`
+- `drivers/gold_layer/dimensions/01_build_dimensions`
+- `drivers/gold_layer/facts/02_build_admission_star`
+- `drivers/gold_layer/facts/03_build_icu_daily_fact`
+- `drivers/gold_layer/facts/04_build_operational_activity_fact`
+- `drivers/gold_layer/marts/05_build_consumption_views`
 
-**Config:** `configs/metadata/*.json`, `configs/genie/*.json`
+**Deployment notebooks:**
+
+- `deployment/01_apply_gold_metadata`
+- `deployment/02_apply_gold_governance`
+- `deployment/03_deploy_genie_agent`
+
+**Configuration:**
+
+- `Configs/metadata/*.json`
+- `Configs/genie/*.json`
 
 **Target schema:** `cdr_gold.analytics_<dataset>`
 
@@ -302,13 +326,19 @@ Gold follows a five-stage build pattern that applies to any clinical dataset, fo
 | 4. Consumption views | Governed views that combine facts and dimensions for downstream consumers | Pattern reusable, audience rules dataset-specific |
 | 5. Build orchestration | Databricks Workflow that sequences stages 1 to 4 | Fully reusable |
 
-After the build completes, three deployment stages run as separate notebooks:
+After the Gold build completes, three deployment stages run in sequence:
 
 | Stage | What It Produces | Reusable? |
 |-------|------------------|-----------|
-| 6. Metadata deployment | Unity Catalog table and column comments applied from config | Fully reusable |
-| 7. Governance deployment | Group grants applied to governed views | Group list and view list dataset-specific |
-| 8. Downstream consumers | Genie agent and Streamlit app deployed on the governed views | Config-driven, reusable |
+| 6. Metadata deployment | Unity Catalog table and column comments applied from version-controlled metadata config | Fully reusable |
+| 7. Governance deployment | Catalog/schema usage and governed-view access for healthcare roles | Group and view definitions are dataset-specific |
+| 8. Genie deployment | Builds and deploys the Clinical Data Agent from version-controlled semantic configuration | Config-driven and reusable |
+
+The deployment sequence is intentionally:
+
+**Metadata → Governance → Genie**
+
+This ensures the governed consumption views are documented and secured before they are exposed through the natural-language analytics layer.
 
 #### Stage 1: Dimensions
 
@@ -367,19 +397,26 @@ Bridges preserve many-to-many relationships. In MIMIC-IV, admissions have multip
 
 #### Stage 4: Consumption Views
 
-Consumption views are governed views that combine facts and dimensions into wide analytical surfaces. They are what Genie, dashboards, and the Streamlit app query.
+Consumption views provide the governed analytical interface between the internal Gold dimensional model and downstream consumers.
 
-For MIMIC-IV, three views are built:
+Downstream tools do not query the Gold facts and dimensions directly. Instead, dashboards, Genie and applications query these wide consumption views.
 
-| View | Source | Audience |
-|------|--------|----------|
-| `admission_journey` | `fact_admission` joined to patient, careunit, service, and diagnosis dimensions | Researchers, hospital operations, admins |
-| `icu_clinical_monitoring` | `fact_icu_daily_monitoring` joined to patient, admission, and careunit | Researchers, admins |
-| `hospital_operational_activity` | `fact_careunit_daily_activity` | Hospital operations, admins |
+For MIMIC-IV, three governed views are built:
 
-Each view applies row-level filtering and column-level masking inline using `is_account_group_member()`.
+| View | Primary Source | Authorised Audience |
+|------|----------------|--------------------|
+| `admission_journey` | `fact_admission` plus relevant dimensions | Researchers, hospital operations, administrators |
+| `icu_clinical_monitoring` | `fact_icu_daily_monitoring` plus relevant dimensions | Researchers, administrators |
+| `hospital_operational_activity` | `fact_careunit_daily_activity` plus relevant dimensions | Hospital operations, administrators |
 
-**For a new dataset:** the view pattern is the same. What changes is which audiences exist and which columns are sensitive. The audience rules are declared per view, not in a shared config, because audience needs vary by use case.
+The views implement role-aware behaviour using `is_account_group_member()`.
+
+Two governance techniques are used:
+
+- **Row filtering:** users outside the authorised audience receive no rows from a restricted view.
+- **Column masking:** selected sensitive fields remain part of the view but their values are replaced or suppressed for roles that are not authorised to see them.
+
+This provides a stable analytical interface while keeping the underlying Gold facts, dimensions and bridges private.
 
 #### Stage 5: Build Orchestration
 
@@ -399,33 +436,77 @@ The workflow is configured with `queue.enabled = true` and `max_concurrent_runs 
 
 #### Stage 6: Metadata Deployment
 
-Built by 01_apply_gold_metadata. This notebook reads the JSON metadata files from configs/metadata/ and applies them to the three governed views in Unity Catalog.
+Metadata deployment is performed by `deployment/01_apply_gold_metadata`.
 
-The notebook performs three steps:
+The notebook reads JSON metadata definitions from `Configs/metadata/` and applies table and column comments to the governed Gold consumption views in Unity Catalog.
 
-1.A dry run that validates configured metadata against the deployed Gold view schemas without making changes.
-2.A live apply that sets table and column comments.
-3.A validation step that queries information_schema.tables and information_schema.columns to confirm the persisted metadata matches the config. Any mismatch raises an assertion error.
-The JSON metadata files are the source of truth for both Unity Catalog documentation and Genie table and column descriptions.
+The deployment performs three stages:
 
-**For a new dataset:** write one metadata file per Gold view. The notebook does not change.
+1. **Dry-run validation** — compares configured metadata with the deployed view schemas without changing Unity Catalog.
+2. **Live apply** — applies table and column comments.
+3. **Post-deployment validation** — queries Unity Catalog metadata to confirm the persisted descriptions match the configuration.
+
+The metadata files act as a shared source of truth for:
+
+- Unity Catalog documentation;
+- field descriptions used by the Genie semantic layer.
+
+For a new dataset, new metadata files are created for its governed consumption views while the deployment logic remains unchanged.
+
 
 #### Stage 7: Governance Deployment
 
-Built by 03_apply_gold_governance. This notebook grants access to the three healthcare groups.
+Governance deployment is performed by `deployment/02_apply_gold_governance`.
 
-| Step	| What It Does|
-|----------|---------------|
-|Pre-check	|Confirms all three governed views exist before granting|
-|Catalog and schema grants	|Grants USE CATALOG on cdr_gold and USE SCHEMA on analytics_mimic_iv to each group|
-|View grants	|Grants SELECT on each of the three governed views to each group|
-|Post-check	|Runs SHOW GRANTS on catalogs, schemas, and views to confirm|
+The implementation uses three Databricks account groups:
 
-Users only receive access to the governed consumption views. Underlying fact, dimension, and bridge tables are not granted directly.
+- `healthcare_admins`
+- `healthcare_hospital_operations`
+- `healthcare_researchers`
 
-**Check this according to actual governance -> ** Row-level filtering and column masking are enforced inside the view SQL using is_account_group_member(). This is simpler than Unity Catalog row filters and masking policies but couples security logic to the view code.
+The deployment notebook performs four main steps:
 
-**For a new dataset:** update the group list and view list at the top of the notebook. The grant logic does not change.
+| Step | What It Does |
+|------|--------------|
+| **Pre-check** | Confirms that all governed consumption views exist |
+| **Namespace grants** | Grants `USE CATALOG` on `cdr_gold` and `USE SCHEMA` on `analytics_mimic_iv` |
+| **View grants** | Grants `SELECT` on the governed views |
+| **Post-check** | Reviews catalog, schema and view grants to verify the intended access model |
+
+Healthcare consumer groups are not granted direct access to the underlying Gold fact, dimension or bridge tables.
+
+`USE CATALOG` and `USE SCHEMA` only allow users to resolve and navigate the namespace. They do not provide access to the underlying data.
+
+`SELECT ON VIEW` allows a user to query the governed view, while the SQL definition of that view determines which rows and values are visible to the user's role.
+
+Role-specific filtering and masking are implemented using `is_account_group_member()` inside the governed view SQL.
+
+This separates two concerns:
+
+1. **Unity Catalog privileges** determine whether the user may query the governed object.
+2. **Dynamic view logic** determines what that authorised user may see.
+
+Because the consumption views are recreated during the Gold build, governance deployment must run after the views are rebuilt so that the required explicit view grants are restored.
+
+##### Role Access Matrix
+
+| Role | `admission_journey` | `icu_clinical_monitoring` | `hospital_operational_activity` |
+|------|---------------------|---------------------------|---------------------------------|
+| Administrator | Full access | Full access | Full access |
+| Researcher | Governed access | Full access | No rows |
+| Hospital Operations | Governed access | No rows | Full access |
+
+Within `admission_journey`, additional column-level rules apply:
+
+- Administrators can see all exposed fields.
+- Researchers can see diagnosis information but do not receive precise `admittime` or `dischtime` timestamps.
+- Researchers retain generalised temporal fields such as `admission_date`, `admission_year` and `admission_month` for analytical filtering.
+- Hospital Operations users retain admission and operational measures, but primary diagnosis fields are masked as `RESTRICTED`.
+
+The distinction between `UNKNOWN` and `RESTRICTED` is intentional:
+
+- `UNKNOWN` means the user is authorised to see the field but the source value is unavailable.
+- `RESTRICTED` means the field exists but is not available to the current role.
 
 #### Stage 8: Downstream Consumers
 
@@ -448,8 +529,8 @@ Neither consumer changes the Gold data model. Both read from the governed views 
 |Fluid input allocation	|Proportional by overlap seconds	|Handles multi-day infusions without double counting|
 |Null fluid balance	|Null when input or output missing	|Prevents incomplete days being treated as zero|
 |High activity flag	|Per-careunit 95th percentile	|Activity is relative to each careunit's own baseline|
-|Row-level security	|Inline in view SQL	|Couples security to view code but avoids Unity Catalog setup complexity|
-|Column masking	|Inline CASE statement	|Same trade-off|
+| Role-based row filtering | `is_account_group_member()` conditions in governed view SQL | Allows a single governed view to return different datasets according to the signed-in user's account group |
+| Selective column masking | Role-aware `CASE` expressions in governed view SQL | Allows permitted rows to remain available while sensitive values are suppressed for selected roles |
 |Consumption surface	|Views, not tables	|Consumers query governed surfaces, not raw facts|
 
 #### Use Case Extensions
@@ -469,7 +550,14 @@ Neither consumer changes the Gold data model. Both read from the governed views 
 
 ---
 ## 5. Reusability & Onboarding
-The accelerator is designed so that onboarding a new dataset requires new configs and new notebooks that follow established patterns. It does not require modifying existing engines or workflows.
+
+The accelerator separates reusable processing engines from dataset-specific analytical modelling.
+
+Bronze and Silver are designed to onboard new datasets primarily through configuration.
+
+Gold provides reusable modelling patterns, validation approaches and deployment tooling, but new datasets may require new dimension, fact and consumption-view notebooks because analytical grains and business requirements differ between datasets.
+
+Metadata and Genie deployment remain strongly config-driven.
 
 ### 5.1 What Changes and What Does Not
 
@@ -482,7 +570,7 @@ The accelerator is designed so that onboarding a new dataset requires new config
 | Gold view notebook | Yes, new views follow the existing pattern |
 | Metadata config | Yes |
 | Genie config | Yes |
-| Governance notebook(TO BE UPDATED) | Yes, group and view lists updated |
+| Governance notebook| Yes, group and view lists updated as per role type|
 | Bronze and Silver configs | Yes |
 | Unity Catalog objects | Yes |
 | Workflows | Parameter changes only |
@@ -509,26 +597,30 @@ To add a new clinical dataset:
 3. Write new dimension, fact, and view notebooks by copying existing patterns
 4. Write metadata JSON files under `configs/metadata/`
 5. Write Genie JSON files under `configs/genie/`
-6. Update the governance notebook with new groups and views(TO BE UPDATED)
+6. Define the required audience groups and governance rules for the new consumption views.
 7. Create Unity Catalog objects for the new dataset
 8. Point the workflows at the new configs
 9. Run the Bronze, Silver, and Gold workflows in order
 10. Run the deployment notebooks in order
 
-Steps 1, 2, 4, 5, 6, 7, and 8 require no code. Steps 3 and 9 require new notebooks that follow existing patterns.
+Bronze, Silver, metadata and Genie deployment are primarily configuration-driven. Gold analytical modelling requires dataset-specific notebooks that follow the established dimensional modelling patterns.
 
 ---
 ## 6. AI/BI Genie
 
-**Purpose:** Provide a natural-language interface on top of the Gold governed views so that researchers, hospital operations staff, and administrators can query clinical data without writing SQL.
+**Purpose:** Provide a natural-language analytical interface over the governed Gold consumption views so that researchers, hospital operations staff and administrators can query permitted clinical data without writing SQL.
 
-**Deployment notebook:** `deployment/02_deploy_genie_agent`
+**Deployment notebook:** `deployment/03_deploy_genie_agent`
 
-**Config:** `configs/genie/*.json` (six files)
+**Configuration:** `Configs/genie/*.json`
 
 **Agent title:** Clinical Data Agent
 
-**Data sources:** `admission_journey`, `icu_clinical_monitoring`, `hospital_operational_activity`
+**Data sources:**
+
+- `admission_journey`
+- `icu_clinical_monitoring`
+- `hospital_operational_activity`
 
 ### 6.1 Overview
 
@@ -555,7 +647,17 @@ The Genie semantic layer has four parts.
 
 **Grain declarations.** Each view's grain is stated so the agent knows what "one row" means. For example, `admission_journey` is one row per `hadm_id`, and `icu_clinical_monitoring` is one row per `stay_id` + `clinical_date`.
 
-**Join specifications.** `joins.json` declares the one supported join between Gold views. For MIMIC-IV, `icu_clinical_monitoring` joins to `admission_journey` on `hadm_id` as a many-to-one relationship. The join also includes an instruction that warns the agent to aggregate ICU data to the admission grain before joining, so admission-level measures are not overweighted by admissions with longer ICU stays.
+**Join specifications.**
+
+`joins.json` declares the supported direct relationship between the governed views.
+
+For MIMIC-IV, `icu_clinical_monitoring` joins to `admission_journey` on `hadm_id` as a many-to-one relationship.
+
+Because ICU monitoring contains multiple stay-days for the same admission, instructions require ICU measures to be aggregated to the intended analytical grain before admission-level measures are combined with them. This prevents admissions with longer ICU stays from being overweighted.
+
+`hospital_operational_activity` does not have a direct patient- or admission-level relationship with the other views. Cross-domain analyses involving operational activity therefore aggregate each dataset independently to a compatible temporal or care-unit grain before combining results.
+
+This avoids creating invalid row-level joins between clinical records and aggregate operational activity.
 
 **Metric rules.** `instructions.json` defines what each metric means and how it should be calculated. This includes:
 
@@ -602,11 +704,22 @@ Benchmark questions cover:
 | Cross-view | ICU lab activity and hospital movement by date |
 | Cross-view | Admissions, ICU stay-days, and high-activity share by year |
 
-The cross-view benchmarks are the most valuable. They test whether the agent can aggregate correctly before joining, which is the hardest part of the semantic layer.
+The cross-view benchmarks are particularly useful because they test whether Genie respects differences in grain between the governed views.
+
+For admission and ICU analysis, this includes aggregating ICU stay-day data appropriately before combining it with admission-level measures.
+
+For analyses involving hospital operational activity, each dataset must first be aggregated independently to an appropriate shared grain such as date or year rather than joined directly at patient or admission level.
 
 ### 6.6 Accuracy Evaluation
 
-Agent accuracy is measured by running each benchmark question through the deployed Genie agent and comparing the returned SQL to the expected SQL.
+Agent accuracy is measured by running each benchmark question through the deployed Genie agent and comparing the returned SQL result against the expected SQL result.
+
+To avoid mixing analytical accuracy with intentional role-based restrictions, the evaluation is split into two parts:
+
+1. **Semantic accuracy** — whether Genie generates a correct analytical result for the benchmark question.
+2. **Governance validation** — whether Genie correctly respects role-based access restrictions.
+
+For semantic accuracy, benchmarks should be run using an administrator account so that all three governed views are available and governance restrictions do not interfere with the accuracy score.
 
 Three scoring approaches are possible:
 
@@ -618,10 +731,11 @@ Three scoring approaches are possible:
 
 **Recommended:** result set match. It allows different SQL that produces the same answer, which reflects how a human would judge correctness.
 
-The accuracy metric is:
-Accuracy = (benchmarks answered with matching result set) / (total benchmarks)
+The semantic accuracy metric is:
 
-For MIMIC-IV, the t**arget is to answer at least eight of ten benchmarks correctly**, giving an accuracy of 80 percent or higher. The four cross-view benchmarks are the most likely to fail if the semantic layer is not working correctly.
+**Accuracy = (benchmarks answered with matching result set) / (total benchmarks)**
+
+For MIMIC-IV, the **target is to answer at least eight of ten benchmarks correctly**, giving an accuracy of 80 percent or higher. The cross-view benchmarks are the most likely to fail if the semantic layer is not handling differences in grain and aggregation correctly.
 
 #### 6.6.1 How to Run the Evaluation
 
@@ -633,12 +747,16 @@ Before running the evaluation, confirm that:
 
 - The Gold views have been built and are queryable
 - Metadata has been applied via `01_apply_gold_metadata`
-- Governance grants have been applied via `03_apply_gold_governance`
-- The Genie agent has been deployed via `02_deploy_genie_agent`
+- Governance grants have been applied via `02_apply_gold_governance`
+- The Genie agent has been deployed via `03_deploy_genie_agent`
 
 **Step 2: Open the Genie agent.**
 
-Open the deployed Clinical Data Agent in the Databricks workspace. If the agent is embedded in the Streamlit app, open it there to test the user-facing experience.
+Open the deployed Clinical Data Agent in the Databricks workspace.
+
+Run the benchmark accuracy evaluation using an administrator account so that all governed views are available. Governance behaviour for Researcher and Hospital Operations roles is tested separately.
+
+If the agent is later embedded in the Databricks App, the same governance tests can also be repeated through the user-facing application.
 
 **Step 3: Run each benchmark question.**
 
@@ -647,35 +765,50 @@ For each of the ten benchmark questions:
 1. Submit the question through the Genie UI exactly as written in `benchmarks.json`
 2. Capture the SQL that Genie returns
 3. Run the returned SQL
-4. Compare the result set against the expected result set from the benchmark
+4. Run the expected SQL from the benchmark
+5. Compare the returned result sets
 
 **Step 4: Score each benchmark.**
 
-Score each benchmark as one of:
+Score each semantic benchmark as one of:
 
 | Score | Meaning |
 |-------|---------|
 | Correct | Result set matches the expected result set |
-| Partially correct | Query runs without error but returns an incorrect result set or incorrect aggregation |
-| Incorrect | Query fails, or Genie refuses to answer, or the SQL is not relevant |
-| Blocked | Query requires access the user does not have, and Genie correctly explains the restriction |
+| Partially correct | Query runs without error but returns an incorrect result set or uses an incorrect aggregation |
+| Incorrect | Query fails, Genie refuses to answer, or the SQL does not answer the benchmark question |
 
-The Blocked score exists because governance rules intentionally restrict some views for some roles. If a benchmark is run under a role that does not have access to a view, and the agent correctly explains the restriction, that is a pass for governance behaviour even though no result is produced.
+Governance behaviour is scored separately as **Pass** or **Fail** rather than being included in the semantic accuracy percentage.
+
+Governance validation should confirm that:
+
+- Researchers can query admission and ICU datasets
+- Researchers cannot retrieve hospital operational activity
+- Hospital Operations users can query admission and operational datasets
+- Hospital Operations users cannot retrieve ICU clinical monitoring data
+- Primary diagnosis values are masked for Hospital Operations users
+- Genie explains role-restricted results as access restrictions rather than incorrectly stating that the dataset contains no data
+
+This means a correctly restricted query is treated as a successful governance test, but it is not counted as a correct analytical benchmark.
 
 **Step 5: Report results.**
 
 Report the results in the final report with:
 
-- The accuracy figure (correct benchmarks divided by total benchmarks)
+- The semantic accuracy figure (correct benchmarks divided by total benchmarks)
 - A table showing each benchmark, its score, and a one-line note on any failure
-- A list of failure modes observed (for example, agent aggregated at the wrong grain, agent joined without aggregation, agent chose the wrong view)
+- A list of failure modes observed, for example:
+  - agent aggregated at the wrong grain
+  - agent joined datasets without aggregating first
+  - agent selected the wrong governed view
 - Any changes made to the semantic layer in response to failures
+- A separate governance validation summary showing the role-based tests and whether each passed or failed
 
-(TO BE UPDATED : The report should state the accuracy figure for MIMIC-IV, list any benchmarks that failed, and describe the failure mode for each.)
+The final report should state the accuracy figure for MIMIC-IV, list any benchmarks that failed, describe the failure mode for each, and separately report the governance validation results.
 
 #### 6.6.2 Reporting Format
 
-The results table in the report should follow this shape:
+The semantic accuracy results table in the report should follow this shape:
 
 | # | Question | Score | Notes |
 |---|----------|-------|-------|
@@ -690,7 +823,21 @@ The results table in the report should follow this shape:
 | 9 | ICU lab activity and hospital movement | [score] | [note on any failure] |
 | 10 | Admissions, ICU stay-days, activity by year | [score] | [note on any failure] |
 
-If a benchmark fails, the notes column should record the specific failure mode. For example: "Agent joined ICU stay-days directly to admission rows without aggregating, causing admission measures to be overweighted."
+If a benchmark fails, the notes column should record the specific failure mode. For example:
+
+> "Agent joined ICU stay-days directly to admission rows without aggregating, causing admission measures to be overweighted."
+
+Governance validation should be reported separately, for example:
+
+| Role | Test | Expected Behaviour | Result |
+|------|------|--------------------|--------|
+| Researcher | Query ICU monitoring | Allowed | Pass/Fail |
+| Researcher | Query operational activity | Restricted | Pass/Fail |
+| Hospital Operations | Query operational activity | Allowed | Pass/Fail |
+| Hospital Operations | Query ICU monitoring | Restricted | Pass/Fail |
+| Hospital Operations | View primary diagnosis | Masked as `RESTRICTED` | Pass/Fail |
+
+This keeps **Genie analytical accuracy** and **governance correctness** separate, while still evaluating both as part of the overall solution.
 
 
 ### 6.7 Deployment
@@ -734,62 +881,165 @@ The notebook supports both first-time deployment and updates. If the space exist
 
 
 ---
-## 7. Streamlit app
+## 7. AI/BI Dashboard and Databricks App
+
+### 7.1 AI/BI Dashboard
+
+A Databricks AI/BI dashboard provides curated visual analytics over the three governed Gold consumption views.
+
+The dashboard contains three analytical pages:
+
+1. **Admission Journey Overview**
+2. **ICU Clinical Monitoring Overview**
+3. **Hospital Operational Activity**
+
+The pages are aligned with the main analytical audiences: 
+
+- Admission Journey supports all authorised healthcare roles.
+- ICU Clinical Monitoring is intended for Researchers and Administrators.
+- Hospital Operational Activity is intended for Hospital Operations and Administrators.
+
+The dashboard uses the same governed Gold views as Genie, ensuring dashboard results and natural-language analytics are based on the same curated data definitions.
+
+Dashboard access should use individual user data permissions so that Unity Catalog and dynamic-view governance are evaluated using the signed-in user's identity.
+
+### 7.2 Databricks App
+
+A Databricks App is planned as the final user-facing entry point for the accelerator.
+
+The App is intended to combine:
+
+- the Clinical Data Agent;
+- the Admission analytics experience;
+- the ICU analytics experience;
+- the Hospital Operational analytics experience.
+
+The application layer can additionally use account-group membership to control which navigation options are presented to the signed-in user.
+
+Expected navigation is:
+
+| Role | Admission | ICU | Operations | Genie |
+|------|-----------|-----|------------|-------|
+| Administrator | Yes | Yes | Yes | Yes |
+| Researcher | Yes | Yes | No | Yes |
+| Hospital Operations | Yes | No | Yes | Yes |
+
+Application-level navigation is a user-experience control rather than the primary security boundary.
+
+Unity Catalog and the governed consumption views continue to enforce data security independently, meaning a hidden application route does not replace data-level access control.
 
 ---
 
 ## 8. Governance
 
-Governance is applied at Unity Catalog level, not in pipeline code.
+Governance is implemented using Unity Catalog privileges together with dynamic security logic in the Gold consumption views.
 
-**Purpose:** Enforce role-based access control (RBAC) at both the data layer (Unity Catalog and Gold views) and the application layer (Streamlit app) to ensure users only see the data and tools relevant to their role.
+### 8.1 Healthcare Roles
 
-**Components:** Unity Catalog, Gold governed views, Streamlit Databricks App.
+Three Databricks account-level groups are used:
 
-### 8.1 Overview
+- `healthcare_admins`
+- `healthcare_hospital_operations`
+- `healthcare_researchers`
 
-Governance in this accelerator is applied using a defence in depth approach. It is not just a single configuration. It operates at two distinct layers:
+These groups represent the main analytical audiences supported by the reference implementation.
 
-1. **Data Layer:** Row-level filtering and column-level masking are enforced directly inside the Gold consumption views using `is_account_group_member()`.
-2. **Application Layer:** The Streamlit app reads the logged-in user's group membership and routes them to the correct dashboard and Genie room.
+### 8.2 Privilege Model
 
-This ensures that even if a user accesses the database directly, they cannot see data outside their role. If they use the Streamlit app, they are presented with a curated, role specific interface.
+The healthcare groups receive:
 
-### 8.2 Role Definitions
+- `USE CATALOG` on `cdr_gold`
+- `USE SCHEMA` on `cdr_gold.analytics_mimic_iv`
+- `SELECT` on the governed consumption views
 
-Three distinct Databricks user groups govern access. These groups are mapped to specific analytical domains.
+Users are not granted direct access to the underlying Gold facts, dimensions or bridge tables.
 
-| Group Name | Persona | Analytical Focus | Data Access Scope |
-|------------|---------|------------------|-------------------|
-| `healthcare_admins` | Administrators | Full system oversight, clinical outcomes, and operational metrics. | All dimensions, facts, and bridges. Unmasked diagnosis data. |
-| `healthcare_hospital_operations` | Operations Staff | Patient flow, care unit activity, transfer movements, and admissions. | Admissions, operational activity, and patient/date/careunit dimensions. No diagnosis bridges. |
-| `healthcare_researchers` | Clinical Researchers | ICU monitoring, clinical outcomes, and diagnosis/procedure analysis. | ICU monitoring, admissions, diagnosis/procedure bridges, and dimensions. No operational activity fact. |
+Namespace privileges and data privileges are intentionally separated:
 
-### 8.3 Data-Level Access (Gold Views)
+- `USE CATALOG` allows the catalog to be referenced.
+- `USE SCHEMA` allows the schema to be referenced.
+- `SELECT ON VIEW` allows the governed view to be queried.
 
-The Gold layer uses a star schema. Access to specific facts and dimensions is controlled by the three roles.
+These privileges alone do not determine what rows and values the user can see.
 
-* **Admins:** Have visibility across the entire Gold layer. They can query all facts, dimensions, and bridges. Diagnosis descriptions are unmasked.
-* **Operations :** Have visibility over `fact_careunit_daily_activity`, `fact_icu_daily_monitoring`, `fact_admission`, and the shared dimensions (`dim_date`, `dim_careunit`, `dim_patient`, `dim_service`). They do not have access to diagnosis or procedure bridges. Diagnosis fields are masked as `RESTRICTED`.
-* **Researchers :** Have visibility over `fact_icu_daily_monitoring`, `fact_admission`, `bridge_admission_diagnosis`, `bridge_admission_procedure`, and the shared dimensions. They do not have access to the operational activity fact (`fact_careunit_daily_activity`).
+### 8.3 Dynamic View Security
 
-This is implemented inside the view SQL. For example, the `hospital_operational_activity` view includes:
+Role-specific data restrictions are implemented inside the SQL definitions of the governed consumption views using:
 
-```sql
-WHERE is_account_group_member('healthcare_admins')
-   OR is_account_group_member('healthcare_hospital_operations')
-```
+`is_account_group_member()`
 
-And the admission_journey view masks diagnosis columns using:
+Two forms of security are used.
 
-```sql
-CASE
-    WHEN is_account_group_member('healthcare_admins')
-        OR is_account_group_member('healthcare_researchers')
-    THEN COALESCE(dx.icd_code, 'UNKNOWN')
-    ELSE 'RESTRICTED'
-END AS primary_diagnosis_code
-```
+**Row filtering**
+
+Entire datasets are hidden from roles that do not require them.
+
+Examples:
+
+- `icu_clinical_monitoring` returns rows only for Administrators and Researchers.
+- `hospital_operational_activity` returns rows only for Administrators and Hospital Operations users.
+
+**Column masking**
+
+Users may retain access to an admission record while selected values are replaced or suppressed.
+
+Within `admission_journey`:
+
+- Hospital Operations users receive `RESTRICTED` for primary diagnosis fields.
+- Researchers retain diagnosis information.
+- Researchers do not receive precise admission and discharge timestamps.
+- Generalised admission date, year and month fields remain available to all authorised roles.
+
+### 8.4 Role Matrix
+
+| Role | Admission Journey | ICU Clinical Monitoring | Hospital Operational Activity |
+|------|-------------------|-------------------------|-------------------------------|
+| Administrator | Full | Full | Full |
+| Researcher | Governed | Full | No rows |
+| Hospital Operations | Governed / diagnosis masked | No rows | Full |
+
+### 8.5 Defence in Depth
+
+The application and dashboard layers may hide interfaces that are irrelevant to a user's role, but this is not relied upon as the security boundary.
+
+Data access remains protected by Unity Catalog and the governed views.
+
+Therefore, even if a user attempts to query a restricted dataset outside the intended interface, the underlying governance rule still applies.
+
+### 8.6 Genie Governance
+
+Genie queries the same governed consumption views used by SQL and dashboards.
+
+The agent therefore does not define a separate security model.
+
+Its semantic instructions include additional guidance so that restricted results are explained appropriately.
+
+For example, if a Researcher requests operational activity, an empty governed result should not automatically be interpreted as evidence that no operational data exists. Where appropriate, Genie explains that the information is unavailable to the current role.
+
+### 8.7 Validation
+
+Governance was validated using role-specific user testing.
+
+Validation included:
+
+- successful access to permitted views;
+- zero-row responses for restricted views;
+- masked diagnosis fields for Hospital Operations;
+- access to clinical ICU data for Researchers;
+- denial of direct access to underlying Gold fact tables;
+- Genie responses under restricted roles.
+
+This verifies both the Unity Catalog privilege model and the dynamic behaviour implemented in the governed views.
+
+### 8.8 Deployment Dependency
+
+Governance deployment runs after the Gold consumption views are created.
+
+Because recreating the views can replace their explicit view-level grants, the deployment sequence is:
+
+**Gold Build → Metadata → Governance → Genie Deployment**
+
+This ensures every rebuilt consumption surface is documented, secured and then exposed to downstream consumers.
 
 ---
 
@@ -821,6 +1071,16 @@ The three Silver tasks run in parallel after Bronze completes.
 | `gold_consumption_views` | all three fact tasks | Build the three governed views |
 
 The three fact tasks run in parallel after dimensions complete. The views task runs only after all facts succeed.
+
+After the Gold build workflow completes successfully, the separate Gold deployment workflow runs:
+
+| Task | Depends On | Purpose |
+|------|------------|---------|
+| `apply_gold_metadata` | Gold consumption views available | Apply and validate Unity Catalog metadata |
+| `apply_gold_governance` | `apply_gold_metadata` | Restore and validate role-based access |
+| `deploy_genie_agent` | `apply_gold_governance` | Build and deploy the Clinical Data Agent |
+
+The deployment order is significant because the downstream Genie layer should only be deployed after the governed views have been rebuilt, documented and secured.
 
 ### 9.3 Shared Run ID(VERIFY)
 
@@ -876,7 +1136,8 @@ The Gold build workflow does not currently share the run ID with Bronze and Silv
 | Gold requires human design | Facts/dimensions declared per dataset | Templated Gold per domain |
 | `special_transform` requires code | Some tables need custom logic | Expand declarative rules |
 | Single-tenant catalog naming | One catalog per layer | Multi-tenant strategy |
-
+| Dynamic security is embedded in governed view SQL | Role rules are coupled to consumption-view definitions | Consider Unity Catalog row filters and column masks for larger deployments |
+| Role-aware App navigation is not the primary security boundary | Hidden UI elements alone cannot secure data | Continue enforcing all access through Unity Catalog and governed views |
 
 ---
 
