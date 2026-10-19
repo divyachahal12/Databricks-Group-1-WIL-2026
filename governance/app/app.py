@@ -75,9 +75,17 @@ else:
 st.markdown(
     """
     <style>
+        .block-container, [data-testid="stMainBlockContainer"] {
+            padding-top: 3rem;
+            padding-bottom: 1rem;
+            padding-left: 2rem;
+            padding-right: 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
         .main-header {
             text-align: center;
-            padding: .5rem 0 1rem 0;
+            padding: 0 0 .75rem 0;
         }
         .main-header h1 {
             margin: 0;
@@ -92,11 +100,32 @@ st.markdown(
             border: 1px solid #e0e0e0;
             border-radius: 8px;
         }
+        /* --- Tab Nav Bar Styling --- */
+        [data-testid="stTabs"] [role="tab"] {
+            background-color: #FFFFFF;
+            color: #333333;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px 8px 0 0;
+            padding: 0.5rem 1.25rem;
+            margin-right: 0.25rem;
+            transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+        }
+        [data-testid="stTabs"] [role="tab"]:hover {
+            background-color: #FF9901;
+            color: #FFFFFF;
+            border-color: #FF9901;
+        }
+        [data-testid="stTabs"] [role="tab"][aria-selected="true"] {
+            background-color: #FF0061;
+            color: #FFFFFF;
+            border-color: #FF0061;
+        }
+        [data-testid="stTabs"] [role="tab"][aria-selected="true"]:hover {
+            background-color: #FF9901;
+            color: #FFFFFF;
+            border-color: #FF9901;
+        }
     </style>
-    <div class = "main-header">
-        <h1>Hospital Data Portal</h1>
-        <p>Dashboard &amp; AI Assistant for Hospitalisation Data</p>
-    </div>
     """,
     unsafe_allow_html = True
 )
@@ -106,26 +135,9 @@ tab_ai_assistant, tab_heatlh_dashboard, tab_usage_dashboard  = st.tabs(["AI Assi
 
 with tab_ai_assistant:
     if genie_url:
-        st.markdown(
-            """
-            <div style = "background: linear-gradient(135deg, #e8f4f8, #f0e6ff);
-                            border-radius:12px; padding: 1.2rem 1.5rem; margin-bottom: 1rem;">
-                <h3 style = "margin: 0 0 .3rem 0;">
-                    Hi There! Welcome to the Hospital Data Assistant
-                </h3>
-                <p style = "margin: 0; color: #555555; font-size: .95rem;">
-                    Ask me anything about patients, admissions and transfers.
-                    You can try questions like:
-                </p>
-                <ul style = "margin: .5rem 0 0 0; color: #444444; font-size: .9rem;">
-                    <li>How many patients were admitted to the hospital last year?</li>
-                    <li>What is the average length of stay all types of admissions?</li>
-                </ul>
-            </div>
-            """,
-            unsafe_allow_html = True
-        )
-        st.components.v1.iframe(genie_url, height = 800, scrolling = True)
+        st.markdown("#### Clinical Data Agent")
+        st.write("Helpful Genie Assistant to answer your queries")
+        st.components.v1.iframe(genie_url, height = 700, scrolling = True)
     else:
         st.info(
             "You do not have access to the AI Assistant."
@@ -135,17 +147,19 @@ with tab_ai_assistant:
 with tab_heatlh_dashboard:
     if health_data_dashboard_url:
         st.markdown("#### Health Data Dashboard")
-        st.components.v1.iframe(health_data_dashboard_url, height = 800, scrolling = True)
+        st.write("Visual Dashboard for MIMIC-IV Health Data Repository")
+        st.components.v1.iframe(health_data_dashboard_url, height = 700, scrolling = True)
     else:
         st.info(
-            "You do not have access to the Dashboard."
+            "You do not have access to the Dashboard.\n"
             "Please contact your administrator to be added to an authorised group."
         )
 
 with tab_usage_dashboard:
     if usage_dashboard_url:
         st.markdown("#### Usage Dashboard")
-        st.components.v1.iframe(usage_dashboard_url, height = 800, scrolling = True)
+        st.write("Breakdown of current cost usage within Databricks")
+        st.components.v1.iframe(usage_dashboard_url, height = 700, scrolling = True)
     else:
         st.info(
             "You do not have access to the Dashboard.\n"
