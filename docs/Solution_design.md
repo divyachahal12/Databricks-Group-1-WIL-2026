@@ -918,8 +918,8 @@ For example, a user in `healthcare_hospital_operations` is routed to the operati
 
 
 Application-level navigation is a user-experience control rather than the primary security boundary. Unity Catalog and the governed consumption views continue to enforce data security independently. 
-
 This means that even if a hidden application route is bypassed, data-level access control still prevents the user from seeing unauthorised data.
+
 ---
 
 ## 8. Governance
