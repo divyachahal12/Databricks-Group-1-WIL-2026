@@ -94,23 +94,12 @@ Metadata and Genie deployment return to a config-driven pattern so that document
                 joins.json
                 sql_snippets.json
         governance/
-            sql/
-                01_catalogs.sql 
-                02_schemas.sql
-                03_volumes.sql
-                04_grants.sql
-                05_masking_policies.sql
-                06_row_filters.sql
-                07_tags.sql
+            roles_and_groups.md
             app/
                 app.py
                 app.yaml
                 requirements.txt
                 README.md
-            docs/
-                roles_and_groups.md
-                masking_policies.md
-                tags.md
 
 ---
 
@@ -885,7 +874,7 @@ The notebook supports both first-time deployment and updates. If the space exist
 
 ### 7.1 AI/BI Dashboard
 
-A Databricks AI/BI dashboard provides curated visual analytics over the three governed Gold consumption views.
+The solution provides two user-facing consumption layers on top of the governed Gold views: a native Databricks AI/BI Dashboard for visual analytics, and a Databricks App that combines dashboards and Genie into a single interface.
 
 The dashboard contains three analytical pages:
 
@@ -905,18 +894,21 @@ Dashboard access should use individual user data permissions so that Unity Catal
 
 ### 7.2 Databricks App
 
-A Databricks App is planned as the final user-facing entry point for the accelerator.
+A Databricks App provides the primary user-facing entry point for the accelerator. It combines the AI/BI dashboards and the Clinical Data Agent (Genie) into a single, unified Streamlit interface.
 
-The App is intended to combine:
+The application uses account-group membership to control which navigation options and data tools are presented to the signed-in user.
 
-- the Clinical Data Agent;
-- the Admission analytics experience;
-- the ICU analytics experience;
-- the Hospital Operational analytics experience.
+#### Routing and Authentication
 
-The application layer can additionally use account-group membership to control which navigation options are presented to the signed-in user.
+The Streamlit application (`app.py`) enforces application-level routing through three steps:
 
-Expected navigation is:
+1. **Authentication:** The app retrieves the logged-in user's email from the `X-Forwarded-Email` header provided by the Databricks App environment.
+2. **Group Lookup:** The app uses the Databricks SDK (`WorkspaceClient`) to query the workspace and retrieve the user's group memberships.
+3. **Routing:** Based on the user's group, the app loads the specific Dashboard ID and Genie Room ID configured for that role via a hardcoded mapping dictionary (`GENIE_ID_MAPPING`).
+
+For example, a user in `healthcare_hospital_operations` is routed to the operational dashboard and the operational Genie room. A user in `healthcare_researchers` is routed to the clinical dashboard and clinical Genie room.
+
+#### Navigation Matrix
 
 | Role | Admission | ICU | Operations | Genie |
 |------|-----------|-----|------------|-------|
@@ -924,15 +916,15 @@ Expected navigation is:
 | Researcher | Yes | Yes | No | Yes |
 | Hospital Operations | Yes | No | Yes | Yes |
 
-Application-level navigation is a user-experience control rather than the primary security boundary.
 
-Unity Catalog and the governed consumption views continue to enforce data security independently, meaning a hidden application route does not replace data-level access control.
+Application-level navigation is a user-experience control rather than the primary security boundary. Unity Catalog and the governed consumption views continue to enforce data security independently. 
 
+This means that even if a hidden application route is bypassed, data-level access control still prevents the user from seeing unauthorised data.
 ---
 
 ## 8. Governance
 
-Governance is implemented using Unity Catalog privileges together with dynamic security logic in the Gold consumption views.
+Governance is implemented using Unity Catalog privileges together with dynamic security logic in the Gold consumption views.  It is not just a single configuration; it operates at two distinct layers: the data layer and the application layer.
 
 ### 8.1 Healthcare Roles
 
@@ -998,7 +990,17 @@ Within `admission_journey`:
 | Researcher | Governed | Full | No rows |
 | Hospital Operations | Governed / diagnosis masked | No rows | Full |
 
-### 8.5 Defence in Depth
+### 8.5 Application-Level Access (Streamlit App)
+
+While Unity Catalog enforces data security at the database level, the Databricks App provides a unified, curated interface for Dashboards and Genie. It enforces application-level governance through group-based routing.
+
+1. **Authentication:** The app retrieves the user's email from the `X-Forwarded-Email` header.
+2. **Group Lookup:** It queries the Databricks workspace to find the user's group memberships.
+3. **Routing:** Based on the group, it loads the specific Dashboard ID and Genie Room ID configured for that group.
+
+For example, a user in `healthcare_hospital_operations` sees the operational dashboard and the operational Genie room. A user in `healthcare_researchers` sees the clinical dashboard and the clinical Genie room.
+
+### 8.6 Defence in Depth
 
 The application and dashboard layers may hide interfaces that are irrelevant to a user's role, but this is not relied upon as the security boundary.
 
@@ -1006,7 +1008,7 @@ Data access remains protected by Unity Catalog and the governed views.
 
 Therefore, even if a user attempts to query a restricted dataset outside the intended interface, the underlying governance rule still applies.
 
-### 8.6 Genie Governance
+### 8.7 Genie Governance
 
 Genie queries the same governed consumption views used by SQL and dashboards.
 
@@ -1016,7 +1018,7 @@ Its semantic instructions include additional guidance so that restricted results
 
 For example, if a Researcher requests operational activity, an empty governed result should not automatically be interpreted as evidence that no operational data exists. Where appropriate, Genie explains that the information is unavailable to the current role.
 
-### 8.7 Validation
+### 8.8 Validation
 
 Governance was validated using role-specific user testing.
 
@@ -1031,7 +1033,7 @@ Validation included:
 
 This verifies both the Unity Catalog privilege model and the dynamic behaviour implemented in the governed views.
 
-### 8.8 Deployment Dependency
+### 8.9 Deployment Dependency
 
 Governance deployment runs after the Gold consumption views are created.
 
@@ -1040,6 +1042,40 @@ Because recreating the views can replace their explicit view-level grants, the d
 **Gold Build → Metadata → Governance → Genie Deployment**
 
 This ensures every rebuilt consumption surface is documented, secured and then exposed to downstream consumers.
+
+### 8.10 Framework for Governance Setup for New Datasets
+
+In this project, the Unity Catalog setup and groups were configured manually via the UI due to time constraints. However, for the accelerator to be reusable by Cevo, the following process should be codified.
+
+To onboard a new dataset:
+
+1. **Define the Personas:** Decide the user groups for the new dataset (e.g., `finance_admins`, `clinical_reviewers`).
+2. **Create Unity Catalog Groups:** Create these groups at the account or workspace level.
+3. **Map the Venn Diagram:** Decide which facts and dimensions each group can access, mirroring the role boundaries used in this project.
+4. **Update View SQL:** Apply the `is_account_group_member()` logic in the new Gold views.
+5. **Update Streamlit Config:** Update the `GENIE_ID_MAPPING` dictionary in `app.py` to route the new groups to the new dashboards and Genie spaces.
+6. **(Future Framework Step) Generate SQL Scripts:** Export the `CREATE GROUP`, `GRANT USE CATALOG`, and `GRANT SELECT` statements into the `governance/sql/` folder so the environment can be rebuilt via code.
+
+### 8.11 Design Decisions
+
+| Decision | What Was Built | Note |
+|----------|----------------|------|
+| Data-level enforcement | Inline `is_account_group_member()` in view SQL | Avoids the complexity of setting up Unity Catalog row filters and masking policies. |
+| App-level enforcement | Streamlit group-based routing | Prevents users from accessing tools (dashboards/Genie) meant for other roles. |
+| Group structure | Three distinct groups | Balances the need for data isolation with the administrative overhead of managing too many groups. |
+| Tagging | Not implemented | Removed from scope due to time constraints. Documented as a future extension. |
+| Script-based setup | Not implemented | Setup was done manually via UI for this project. SQL script generation is listed as a future extension for the accelerator. |
+
+### 8.12 Use Case Extensions
+
+| Scenario | Extension |
+|----------|-----------|
+| **Unity Catalog Row Filters** | Move the `is_account_group_member()` logic from the view SQL into a Unity Catalog row filter function on the underlying tables. |
+| **Unity Catalog Masking Policies** | Move the `CASE WHEN ... RESTRICTED` logic into a Unity Catalog masking policy on the underlying columns. |
+| **Data Classification Tags** | Implement Unity Catalog tags (e.g., `PII`, `PHI`, `Sensitive`) to automate masking based on tag presence rather than hardcoded column names. |
+| **Automated Group Provisioning** | Use SCIM or the Databricks Account API to automatically create and manage user groups based on an external Identity Provider (IdP). |
+| **Configuration as Code** | Move the Streamlit `GENIE_ID_MAPPING` dictionary into a JSON config file, so new group routing can be added without editing Python code. |
+| **Audit Logging** | Enable and monitor Databricks audit logs to track who accessed which governed view and when, ensuring compliance with internal policies. |
 
 ---
 
