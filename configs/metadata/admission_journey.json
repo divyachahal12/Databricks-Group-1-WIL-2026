@@ -1,6 +1,6 @@
 {
   "table": "cdr_gold.analytics_mimic_iv.admission_journey",
-  "description": "Gold analytical table containing one row per hospital admission. It summarises patient demographics, hospital length of stay, mortality, care-unit movement, clinical service history, ICU utilisation, diagnoses and procedures. The source data comes from the deidentified MIMIC-IV research dataset, and dates are shifted.",
+  "description": "Gold analytical table containing one row per hospital admission. It summarises patient demographics including recorded race, hospital length of stay, mortality, care-unit movement, clinical service history, ICU utilisation, diagnoses, procedures and medications prescribed during the admission. The source data comes from the deidentified MIMIC-IV research dataset, and dates are shifted.",
   "grain": "One row per hospital admission.",
   "primary_key": [
     "hadm_id"
@@ -14,6 +14,9 @@
     },
     "gender": {
       "description": "Recorded patient gender."
+    },
+    "race": {
+      "description": "Recorded race value associated with the hospital admission. This is admission-level information and may vary across admissions for the same patient."
     },
     "age_at_admission": {
       "description": "Derived patient age at the time of hospital admission."
@@ -104,6 +107,12 @@
     },
     "procedure_count": {
       "description": "Number of ICD procedure records associated with the hospital admission."
+    },
+    "prescribed_medication_count": {
+      "description": "Number of distinct medications prescribed during the hospital admission."
+    },
+    "prescribed_medications": {
+      "description": "Sorted list of distinct medication names prescribed during the hospital admission. This reflects prescriptions or orders and should not be interpreted as confirmed medication administration."
     },
     "_gold_timestamp": {
       "description": "Timestamp recording when the Gold dataset was generated."

@@ -334,6 +334,33 @@
       "usage_guidance": [
         "Aggregate over the whole period by careunit; never group by date."
       ]
+    },
+    {
+      "id": "00000000000000000000000000000219",
+      "question": [
+        "What is the in-hospital mortality rate for admissions where metoprolol was prescribed compared with admissions where it was not?"
+      ],
+      "sql": [
+        "SELECT\n",
+        "  CASE\n",
+        "    WHEN EXISTS(prescribed_medications, x -> LOWER(x) LIKE '%metoprolol%') THEN 'Metoprolol prescribed'\n",
+        "    ELSE 'Metoprolol not prescribed'\n",
+        "  END AS prescription_group,\n",
+        "  COUNT(DISTINCT hadm_id) AS admissions,\n",
+        "  SUM(mortality_flag) AS in_hospital_deaths,\n",
+        "  ROUND(100.0 * AVG(mortality_flag), 2) AS mortality_pct\n",
+        "FROM cdr_gold.analytics_mimic_iv.admission_journey\n",
+        "GROUP BY\n",
+        "  CASE\n",
+        "    WHEN EXISTS(prescribed_medications, x -> LOWER(x) LIKE '%metoprolol%') THEN 'Metoprolol prescribed'\n",
+        "    ELSE 'Metoprolol not prescribed'\n",
+        "  END\n",
+        "HAVING COUNT(DISTINCT hadm_id) >= 100\n",
+        "ORDER BY prescription_group DESC;"
+      ],
+      "usage_guidance": [
+        "Use admission_journey because both prescribed medications and in-hospital mortality are available at the hospital-admission grain. Prescription records indicate that metoprolol was prescribed during the admission, not that it was confirmed as administered. mortality_flag represents in-hospital mortality only."
+      ]
     }
   ]
 }
