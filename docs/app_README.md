@@ -28,4 +28,6 @@ This document describes how to create and deploy a Streamlit application using D
      | `requirements.txt` | Lists the Python packages the app depends on, which are installed when the app is deployed. |
 
 4. **Deploy the app.**
+
    When starting the app for the first time, make sure all the files are in the same folder and deploy from that folder.
+   The deployed folder can be changed by redeploying it and selecting the new one.
