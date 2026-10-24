@@ -3,8 +3,6 @@
 ## 1. Overview
 This document describes how users and user groups are set up and maintained in Databricks. It covers where each type of object is managed (account level or workspace level) and the steps for configuring groups so that access to Unity Catalog resources can be granted consistently.
 
-**Audience:** Platform administrators and anyone responsible for managing access to the Databricks environment.
-
 **Scope:**
 1. Creating and maintaining users and user groups
 2. How account-level and workspace-level configuration relate to each other
