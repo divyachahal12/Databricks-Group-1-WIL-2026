@@ -818,15 +818,9 @@ If a benchmark fails, the notes column should record the specific failure mode. 
 
 > "Agent joined ICU stay-days directly to admission rows without aggregating, causing admission measures to be overweighted."
 
-Governance validation should be reported separately, for example:
+Governance validation, for example:(ADD SCREEN SHOTS FOR DIFFERENT ROLES)
 
-| Role | Test | Expected Behaviour | Result |
-|------|------|--------------------|--------|
-| Researcher | Query ICU monitoring | Allowed | Pass/Fail |
-| Researcher | Query operational activity | Restricted | Pass/Fail |
-| Hospital Operations | Query operational activity | Allowed | Pass/Fail |
-| Hospital Operations | Query ICU monitoring | Restricted | Pass/Fail |
-| Hospital Operations | View primary diagnosis | Masked as `RESTRICTED` | Pass/Fail |
+
 
 This keeps **Genie analytical accuracy** and **governance correctness** separate, while still evaluating both as part of the overall solution.
 
