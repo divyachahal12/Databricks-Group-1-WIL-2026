@@ -339,7 +339,7 @@ Each dimension declares a grain and a surrogate key strategy. The pattern is:
 4. Validate row count, key uniqueness, and null key count
 5. Publish
 
-For MIMIC-IV, six dimensions are built:
+For MIMIC-IV, seven dimensions are built:
 
 | Dimension | Grain | Surrogate Key |
 |-----------|-------|---------------|
@@ -349,6 +349,7 @@ For MIMIC-IV, six dimensions are built:
 | `dim_service` | One row per hospital service code | `xxhash64(service_code)` |
 | `dim_diagnosis` | One row per `icd_code` + `icd_version` | `xxhash64(icd_code, icd_version)` |
 | `dim_procedure` | One row per `icd_code` + `icd_version` | `xxhash64(icd_code, icd_version)` |
+| `dim_medication` | One row per `drug` + `formulary_drug_code` + `prod_strength` | `xxhash64(drug, formulary_drug_code, prod_strength)` |
 
 **For a new dataset:** the same six dimensions apply if the source has patients, dates, care units, services, and coded diagnoses or procedures. If a dataset lacks one of these, that dimension is skipped. If it has an extra dimension (for example, a provider dimension), a new entry is added following the same pattern.
 
@@ -367,7 +368,7 @@ For MIMIC-IV, three facts are built:
 
 | Fact | Grain | Measures | Foreign Keys |
 |------|-------|----------|--------------|
-| `fact_admission` | One row per `hadm_id` | Length of stay, age at admission, mortality flag, ICU flag, transfer count, service change count, diagnosis count, procedure count | patient, admission date, discharge date, first and last careunit, initial and final service, primary diagnosis |
+| `fact_admission` | One row per `hadm_id` | Length of stay, age at admission, recorded race, mortality flag, ICU flag, transfer count, service change count, diagnosis count, procedure count | patient, admission date, discharge date, first and last careunit, initial and final service, primary diagnosis |
 | `fact_icu_daily_monitoring` | One row per `stay_id` + `clinical_date` | Vitals, labs, fluid balance, procedure counts | patient, date, careunit |
 | `fact_careunit_daily_activity` | One row per `activity_date` + `careunit` | Active patient count, arrival count, departure count, ICU activity count | date, careunit |
 
@@ -381,6 +382,7 @@ Bridges preserve many-to-many relationships. In MIMIC-IV, admissions have multip
 |--------|-------|---------|
 | `bridge_admission_diagnosis` | One row per admission diagnosis | Links `fact_admission` to `dim_diagnosis`, flags primary diagnosis |
 | `bridge_admission_procedure` | One row per admission procedure | Links `fact_admission` to `dim_procedure` |
+| `bridge_admission_medication` | One row per `hadm_id` + `medication_key` | Links `fact_admission` to `dim_medication` for medications prescribed during the admission |
 
 **For a new dataset:** any dataset with many-to-many relationships uses bridges. The pattern is identical. Add or remove bridges based on the model.
 
