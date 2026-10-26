@@ -1,3 +1,4 @@
+import html
 import streamlit as st
 from databricks.sdk import WorkspaceClient
 
@@ -13,7 +14,7 @@ st.set_page_config(
 WORKSPACE_URL = "https://dbc-e99163ad-cc83.cloud.databricks.com"
 WORKSPACE_ID = "7474648421005201"
 
-GENIE_ID = "01f1c7a2168c12ac9ac94b6ce053c1dc"
+GENIE_ID = "01f1cf6ed94c1ce4836afdec8039132f"
 
 HEALTHCARE_ADMIN_DASHBOARD_ID = "01f1c75cfc5b10f68e5248d66127d430"
 HEALTHCARE_HOSPITAL_OPERATIONS_DASHBOARD_ID = "01f1c7877138187ebbec58b2f8e0d339"
@@ -31,6 +32,12 @@ GENIE_ID_MAPPING = {
     "healthcare_researchers": {
         "health_data_dashboard": HEALTHCARE_HOSPITAL_RESEARCHERS_DASHBOARD_ID,
     },
+}
+
+USER_GROUP_DISPLAY_NAMES = {
+    "healthcare_admins": "Healthcare Admin",
+    "healthcare_hospital_operations": "Healthcare Hospital Operations",
+    "healthcare_researchers": "Healthcare Researchers",
 }
 
 # --- Get User's User Group (WS Level) ---
@@ -125,8 +132,90 @@ st.markdown(
             color: #FFFFFF;
             border-color: #FF9901;
         }
+        /* --- Profile Button Styling --- */
+        .profile-wrapper {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: .5rem;
+        }
+        .profile-container {
+            position: relative;
+            display: inline-block;
+        }
+        .profile-button {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: #FF0061;
+            color: #FFFFFF;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 1.1rem;
+            cursor: default;
+            user-select: none;
+            transition: background-color 0.2s ease;
+        }
+        .profile-container:hover .profile-button {
+            background-color: #FF9901;
+        }
+        .profile-tooltip {
+            visibility: hidden;
+            opacity: 0;
+            position: absolute;
+            top: 48px;
+            right: 0;
+            width: max-content;
+            min-width: 240px;
+            max-width: calc(100vw - 4rem);
+            background-color: #FFFFFF;
+            color: #333333;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            padding: .75rem 1rem;
+            font-size: .85rem;
+            z-index: 1000;
+            transition: opacity 0.2s ease;
+            pointer-events: none;
+        }
+        .profile-container:hover .profile-tooltip {
+            visibility: visible;
+            opacity: 1;
+        }
+        .profile-tooltip .profile-label {
+            color: #888888;
+            font-size: .75rem;
+            margin: 0;
+        }
+        .profile-tooltip .profile-value {
+            margin: 0 0 .5rem 0;
+            white-space: nowrap;
+        }
+        .profile-tooltip .profile-value:last-child {
+            margin-bottom: 0;
+        }
     </style>
     """,
+    unsafe_allow_html = True
+)
+
+# --- Profile Button (hover to view email and user group) ---
+profile_email = html.escape(user_email or "Unknown user")
+profile_group = html.escape(
+    USER_GROUP_DISPLAY_NAMES.get(selective_user_group, selective_user_group)
+    if selective_user_group else "No authorised group"
+)
+profile_initial = html.escape((user_email or "?")[0].upper())
+
+st.markdown(
+    f'<div class="profile-wrapper"><div class="profile-container">'
+    f'<div class="profile-button">{profile_initial}</div>'
+    f'<div class="profile-tooltip">'
+    f'<p class="profile-label">Email</p><p class="profile-value">{profile_email}</p>'
+    f'<p class="profile-label">User Group</p><p class="profile-value">{profile_group}</p>'
+    f'</div></div></div>',
     unsafe_allow_html = True
 )
 
