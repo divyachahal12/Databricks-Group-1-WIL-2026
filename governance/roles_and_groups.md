@@ -38,7 +38,8 @@ All user and group configuration is done in **Databricks**.
 
 ## 4. Group Personas
 
-ADD UML DIAGRAM
+<img width="1773" height="596" alt="Gold Layer Design (Light)" src="https://github.com/user-attachments/assets/830e5df0-723d-442c-96fb-25051b4159ce" />
+
 
 | Group Name | Persona | Primary Focus |
 |------------|---------|---------------|
@@ -53,7 +54,7 @@ The following boundaries dictate what each role can see,as in the UML diagram:
 - **Shared Base (All Roles):** All three roles can access the core dimensions: `dim_date`, `dim_careunit`, `dim_patient`, and `dim_service`.
 - **Clinical Core (Admins & Operations & Researchers):** All three roles can access `fact_admission` and `fact_icu_daily_monitoring`.
 - **Operational Boundary (Admins & Operations ONLY):** Only Admins and Operations can access `fact_careunit_daily_activity`.
-- **Clinical Detail Boundary (Admins & Researchers ONLY):** Only Admins and Researchers can access `dim_diagnosis`, `dim_procedure`, `bridge_admission_diagnosis`, and `bridge_admission_procedure`.
+- **Clinical Detail Boundary (Admins & Researchers ONLY):** Only Admins and Researchers can access `dim_diagnosis`, `dim_procedure`, `dim_medication`, `bridge_admission_diagnosis`, `bridge_admission_procedure`, and `bridge_admission_medication`.
 
 ## 6. Data Access Matrix
 
@@ -64,5 +65,6 @@ The following boundaries dictate what each role can see,as in the UML diagram:
 | `fact_careunit_daily_activity` | ✅ Full | ✅ Full | ❌ No Access |
 | `bridge_admission_diagnosis` | ✅ Full | ❌ No Access | ✅ Full |
 | `bridge_admission_procedure`| ✅ Full | ❌ No Access | ✅ Full |
-| `dim_diagnosis` / `dim_procedure`| ✅ Full | ❌ No Access | ✅ Full |
+| `bridge_admission_medication`| ✅ Full | ❌ No Access | ✅ Full |
+| `dim_diagnosis` / `dim_procedure` / `dim_medication`| ✅ Full | ❌ No Access | ✅ Full |
 | Shared Dimensions (`dim_*`) | ✅ Full | ✅ Full | ✅ Full |
