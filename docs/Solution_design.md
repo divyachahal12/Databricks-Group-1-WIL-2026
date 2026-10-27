@@ -605,7 +605,7 @@ Bronze, Silver, metadata and Genie deployment are primarily configuration-driven
 
 **Configuration:** `Configs/genie/*.json`
 
-**Agent title:** Clinical Data Agent
+**Agent title:** Genie Agent
 
 **Data sources:**
 
@@ -638,21 +638,10 @@ The Genie semantic layer has four parts.
 
 **Grain declarations.** Each view's grain is stated so the agent knows what "one row" means. For example, `admission_journey` is one row per `hadm_id`, and `icu_clinical_monitoring` is one row per `stay_id` + `clinical_date`.
 
-**Join specifications.**
-
-`joins.json` declares the supported direct relationship between the governed views.
-
-For MIMIC-IV, `icu_clinical_monitoring` joins to `admission_journey` on `hadm_id` as a many-to-one relationship.
-
-Because ICU monitoring contains multiple stay-days for the same admission, instructions require ICU measures to be aggregated to the intended analytical grain before admission-level measures are combined with them. This prevents admissions with longer ICU stays from being overweighted.
-
-`hospital_operational_activity` does not have a direct patient- or admission-level relationship with the other views. Cross-domain analyses involving operational activity therefore aggregate each dataset independently to a compatible temporal or care-unit grain before combining results.
-
-This avoids creating invalid row-level joins between clinical records and aggregate operational activity.
+**Join specifications.** `joins.json` declares the supported direct relationship between the governed views. For MIMIC-IV, `icu_clinical_monitoring` joins to `admission_journey` on `hadm_id` as a many-to-one relationship. Because ICU monitoring contains multiple stay-days for the same admission, instructions require ICU measures to be aggregated to the intended analytical grain before admission-level measures are combined with them.
 
 **Metric rules.** `instructions.json` defines what each metric means and how it should be calculated. This includes:
-
-- Hospital LOS(Length of Stay) uses `hospital_los_days`
+- Hospital LOS uses `hospital_los_days`
 - ICU LOS averages exclude rows where `total_icu_los_days` is NULL
 - Fluid balance uses `net_fluid_balance_ml` only when `fluid_balance_complete = TRUE`
 - Total patient movement is arrivals plus departures
@@ -674,170 +663,125 @@ Avoided phrasing:
 - "the unit was overcrowded"
 - "the hospital exceeded capacity"
 
-This matters because Genie responses go to non-technical users who may interpret them as clinical findings. The phrasing rules keep responses descriptive, not diagnostic.
+This keeps Genie responses descriptive, not diagnostic, which is critical for non-technical users.
 
-### 6.5 Benchmark Set (Double check this)
+### 6.5 Benchmark Set
 
-The accelerator ships with ten benchmark questions that test agent accuracy. Each benchmark pairs a question with the expected SQL. This allows the agent to be scored against a fixed set.
+The accelerator was evaluated against a set of **29 benchmark questions** derived from clinical research papers and standard analytical scenarios. 
 
-Benchmark questions cover:
+Of these 29 questions:
+- **26 questions** are defined in the version-controlled `benchmarks.json` file.
+- **3 questions** (including the Metoprolol prescription mortality comparison) were configured directly in the Genie UI for extended testing against the new prescriptions view.
 
-| Domain | Question Type |
+The benchmark set covers:
+
+| Domain | Question Focus |
 |--------|---------------|
-| Admission | Average LOS by age group |
-| Admission | Mortality rate by clinical service |
-| ICU | Average lab results per ICU stay-day by care unit |
-| ICU | Proportion of days with large fluid imbalance by care unit |
-| Operational | Average daily arrivals and departures by care unit |
-| Operational | Weekday versus weekend high-activity rates |
-| Cross-view | Abnormal lab activity and hospital LOS |
-| Cross-view | Admissions and patient movement by year |
-| Cross-view | ICU lab activity and hospital movement by date |
-| Cross-view | Admissions, ICU stay-days, and high-activity share by year |
-
-The cross-view benchmarks are particularly useful because they test whether Genie respects differences in grain between the governed views.
-
-For admission and ICU analysis, this includes aggregating ICU stay-day data appropriately before combining it with admission-level measures.
-
-For analyses involving hospital operational activity, each dataset must first be aggregated independently to an appropriate shared grain such as date or year rather than joined directly at patient or admission level.
+| **Admission & Demographics** | Average/median LOS by admission type and age group, mortality rates by service. |
+| **ICU Clinical Monitoring** | Mortality based on first-day labs (haemoglobin, sodium), 3-day fluid balance, vital-sign warnings. |
+| **Operational Activity** | Care units with the most direct admissions, patient workload, daily arrivals/departures. |
+| **Cross-view & Prescriptions** | Abnormal lab activity and LOS, Metoprolol mortality comparison, yearly movement comparisons. |
 
 ### 6.6 Accuracy Evaluation
 
 Agent accuracy is measured by running each benchmark question through the deployed Genie agent and comparing the returned SQL result against the expected SQL result.
 
 To avoid mixing analytical accuracy with intentional role-based restrictions, the evaluation is split into two parts:
+1. **Semantic accuracy:** Whether Genie generates a correct analytical result.
+2. **Governance validation:** Whether Genie correctly respects role-based access restrictions.
 
-1. **Semantic accuracy** — whether Genie generates a correct analytical result for the benchmark question.
-2. **Governance validation** — whether Genie correctly respects role-based access restrictions.
+For semantic accuracy, benchmarks were run using an administrator account so that all governed views were available.
 
-For semantic accuracy, benchmarks should be run using an administrator account so that all three governed views are available and governance restrictions do not interfere with the accuracy score.
+**Scoring Method:** The evaluation used strict result set matching. A response was marked as "Correct" only if the resulting table structure and values matched the ground truth. 
 
-Three scoring approaches are possible:
-
-| Method | Definition | Effort |
-|--------|------------|--------|
-| Exact SQL match | Agent SQL is identical to expected SQL | Trivial to automate, too strict |
-| Result set match | Agent result set is identical to expected result set | Requires running both queries, most accurate |
-| Human judgement | A reviewer rates the response as correct or incorrect | Subjective but flexible |
-
-**Recommended:** result set match. It allows different SQL that produces the same answer, which reflects how a human would judge correctness.
-
-The semantic accuracy metric is:
-
-**Accuracy = (benchmarks answered with matching result set) / (total benchmarks)**
-
-For MIMIC-IV, the **target is to answer at least eight of ten benchmarks correctly**, giving an accuracy of 80 percent or higher. The cross-view benchmarks are the most likely to fail if the semantic layer is not handling differences in grain and aggregation correctly.
+**Final Result:** The Genie agent achieved **97% semantic accuracy (28 out of 29 benchmarks passed)**, significantly exceeding the 80% target. 
 
 #### 6.6.1 How to Run the Evaluation
 
 The evaluation runs in five steps.
 
 **Step 1: Confirm preconditions.**
-
-Before running the evaluation, confirm that:
-
-- The Gold views have been built and are queryable
-- Metadata has been applied via `01_apply_gold_metadata`
-- Governance grants have been applied via `02_apply_gold_governance`
-- The Genie agent has been deployed via `03_deploy_genie_agent`
+Ensure Gold views are built, metadata is applied (`01_apply_gold_metadata`), governance is applied (`02_apply_gold_governance`), and the agent is deployed (`03_deploy_genie_agent`).
 
 **Step 2: Open the Genie agent.**
-
-Open the deployed Clinical Data Agent in the Databricks workspace.
-
-Run the benchmark accuracy evaluation using an administrator account so that all governed views are available. Governance behaviour for Researcher and Hospital Operations roles is tested separately.
-
-If the agent is later embedded in the Databricks App, the same governance tests can also be repeated through the user-facing application.
+Open the deployed Genie Agent in the Databricks workspace using an administrator account.
 
 **Step 3: Run each benchmark question.**
-
-For each of the ten benchmark questions:
-
-1. Submit the question through the Genie UI exactly as written in `benchmarks.json`
-2. Capture the SQL that Genie returns
-3. Run the returned SQL
-4. Run the expected SQL from the benchmark
-5. Compare the returned result sets
+Submit the questions through the Genie UI. You must test the 26 questions defined in `benchmarks.json`, plus the 3 additional questions configured directly in the Genie UI. For each:
+1. Capture the SQL that Genie returns.
+2. Run the returned SQL.
+3. Compare the returned result sets against the expected SQL.
 
 **Step 4: Score each benchmark.**
-
 Score each semantic benchmark as one of:
 
 | Score | Meaning |
 |-------|---------|
 | Correct | Result set matches the expected result set |
-| Partially correct | Query runs without error but returns an incorrect result set or uses an incorrect aggregation |
-| Incorrect | Query fails, Genie refuses to answer, or the SQL does not answer the benchmark question |
+| Partially correct | Query runs but returns incorrect aggregations |
+| Incorrect | Query fails or the SQL does not answer the question |
 
-Governance behaviour is scored separately as **Pass** or **Fail** rather than being included in the semantic accuracy percentage.
-
-Governance validation should confirm that:
-
-- Researchers can query admission and ICU datasets
-- Researchers cannot retrieve hospital operational activity
-- Hospital Operations users can query admission and operational datasets
-- Hospital Operations users cannot retrieve ICU clinical monitoring data
-- Primary diagnosis values are masked for Hospital Operations users
-- Genie explains role-restricted results as access restrictions rather than incorrectly stating that the dataset contains no data
-
-This means a correctly restricted query is treated as a successful governance test, but it is not counted as a correct analytical benchmark.
+Governance behaviour is scored separately as **Pass** or **Fail**. A correctly restricted query is a successful governance test, but not a correct analytical benchmark.
 
 **Step 5: Report results.**
+Report the semantic accuracy figure, a summary table of results, a failure analysis, and a separate governance validation summary.
 
-Report the results in the final report with:
+#### 6.6.2 Failure Analysis
 
-- The semantic accuracy figure (correct benchmarks divided by total benchmarks)
-- A table showing each benchmark, its score, and a one-line note on any failure
-- A list of failure modes observed, for example:
-  - agent aggregated at the wrong grain
-  - agent joined datasets without aggregating first
-  - agent selected the wrong governed view
-- Any changes made to the semantic layer in response to failures
-- A separate governance validation summary showing the role-based tests and whether each passed or failed
+One benchmark failed. Understanding *why* it failed provides critical insight into the semantic layer's behaviour.
 
-The final report should state the accuracy figure for MIMIC-IV, list any benchmarks that failed, describe the failure mode for each, and separately report the governance validation results.
+**Failed Question:** *"Do admissions with a vital-sign warning in ICU have a longer hospital stay?"*
 
-#### 6.6.2 Reporting Format
+**Failure Mode:** Missing columns and substituted logic. 
+The evaluation's ground truth expected a table returning four specific metrics: `admissions`, `median_los_days`, `mean_los_days`, and `mortality_pct`. Genie correctly calculated the LOS metrics but substituted `mortality_pct` with `p90_los_days` (the 90th percentile of length of stay). 
 
-The semantic accuracy results table in the report should follow this shape:
+Because the resulting table did not match the ground truth's structure, the evaluation failed. This indicates that while Genie understood the LOS comparison perfectly, it autonomously decided to expand the analysis to the upper tail of the distribution (90th percentile) instead of strictly adhering to the requested mortality metric.
+
+#### 6.6.3 Reporting Format
+
+*(Note: The 28 passing questions are summarized by domain below. The single failure is detailed in the table).*
+
+| Category | Passed | Notes |
+|----------|--------|-------|
+| Admission Demographics | 7/7 | Average LOS, median LOS, ICU involvement, mortality by service. |
+| ICU Clinical Monitoring | 8/8 | Haemoglobin/Sodium mortality, 3-day fluid balance, vital-sign warnings. |
+| Operational Activity | 6/6 | Direct admissions, workload, patient-days, daily arrivals/departures. |
+| Cross-View & Prescriptions | 7/8 | Metoprolol mortality, abnormal lab activity, yearly movement comparisons. |
+
+**Detailed Benchmark Failure:**
 
 | # | Question | Score | Notes |
 |---|----------|-------|-------|
-| 1 | Average LOS by age group | Correct | |
-| 2 | Mortality rate by service | Correct | |
-| 3 | Lab results per ICU stay-day | Correct | |
-| 4 | Large fluid imbalance by care unit | Correct | |
-| 5 | Daily arrivals and departures | Correct | |
-| 6 | Weekday versus weekend activity | Correct | |
-| 7 | Abnormal labs and hospital LOS | [score] | [note on any failure] |
-| 8 | Admissions and movement by year | [score] | [note on any failure] |
-| 9 | ICU lab activity and hospital movement | [score] | [note on any failure] |
-| 10 | Admissions, ICU stay-days, activity by year | [score] | [note on any failure] |
+| 1 | Do admissions with a vital-sign warning in ICU have a longer hospital stay? | **Incorrect** | **Missing Logic:** Genie returned `p90_los_days` instead of the ground truth's `mortality_pct`. The resulting table structure did not match the strict evaluation criteria. |
 
-If a benchmark fails, the notes column should record the specific failure mode. For example:
+**Overall Semantic Accuracy:** 28/29 (97%).
 
-> "Agent joined ICU stay-days directly to admission rows without aggregating, causing admission measures to be overweighted."
+#### 6.6.4 Governance Validation Summary
 
-Governance validation, for example:(ADD SCREEN SHOTS FOR DIFFERENT ROLES)
+Governance validation was performed separately from the semantic accuracy benchmarks to ensure that role-based security rules were correctly enforced.
 
+| Test Scenario | Role Tested | Expected Behaviour | Result |
+|---------------|-------------|--------------------|--------|
+| Query `hospital_operational_activity` | `healthcare_researchers` | Genie explains access restriction | **PASS** |
+| Query `icu_clinical_monitoring` | `healthcare_hospital_operations` | Genie explains access restriction | **PASS** |
+| Query primary diagnosis in `admission_journey` | `healthcare_hospital_operations` | Diagnosis field returns `RESTRICTED` | **PASS** |
+| Query all views | `healthcare_admins` | Full unmasked access to all views | **PASS** |
 
-
-This keeps **Genie analytical accuracy** and **governance correctness** separate, while still evaluating both as part of the overall solution.
-
+*Detailed screenshots demonstrating Genie responding to the Researcher and Hospital Operations roles are provided in:
+[**Genie Governance Validation**](https://github.com/divyachahal12/Databricks-Group-1-WIL-2026/tree/feature/darren/docs/AI%20Genie%20Governance%20Pics)
 
 ### 6.7 Deployment
 
-The deployment notebook `02_deploy_genie_agent` runs after the Gold views are built and after metadata has been applied.
+The deployment notebook `03_deploy_genie_agent` runs after the Gold views are built and after metadata has been applied.
 
 Deployment flow:
-
-1. Locate the repository root and import the deployment modules
-2. Build the Genie configuration by reading the six config files
-3. Export a readable preview of the built configuration
-4. Run a dry run of the deployment
-5. Check whether a Genie space with the target title already exists
-6. Create or update the space
-7. Validate the deployed agent
+1. Locate the repository root and import the deployment modules.
+2. Build the Genie configuration by reading the six config files.
+3. Export a readable preview of the built configuration.
+4. Run a dry run of the deployment.
+5. Check whether a Genie space with the target title already exists.
+6. Create or update the space.
+7. Validate the deployed agent.
 
 The notebook supports both first-time deployment and updates. If the space exists, it is updated rather than duplicated.
 
@@ -847,7 +791,7 @@ The notebook supports both first-time deployment and updates. If the space exist
 |----------|----------------|------|
 | Config-driven agent | All six config files live in the repo | Version-controlled, reproducible |
 | Table metadata source | `configs/metadata/` shared with Unity Catalog | Single source of truth for descriptions |
-| Benchmark set | Ten fixed questions with expected SQL | Enables accuracy scoring |
+| Benchmark set | 29 fixed questions with expected SQL | Enables accuracy scoring |
 | Accuracy metric | Result set match | Allows equivalent SQL |
 | Governance behaviour | Agent explains access restrictions | Prevents misleading "no data" responses |
 | Interpretation rules | Descriptive, not causal | Keeps responses appropriate for non-technical users |
@@ -858,12 +802,9 @@ The notebook supports both first-time deployment and updates. If the space exist
 |----------|-----------|
 | Multiple Genie agents | Duplicate `configs/genie/` per dataset and point a new deployment notebook at it |
 | Domain-specific agents | Build separate agents for ICU, admissions, and operational audiences |
-| (TO BE UPDATED)Additional benchmarks | Extend `benchmarks.json` with questions from published MIMIC-IV literature |
 | Automated scoring | Add a scoring script that runs all benchmarks and reports accuracy |
 | SQL snippet library | Populate `sql_snippets.json` with reusable filters and measures |
 | Multi-language | Configure Genie instructions in additional languages |
-
-
 
 ---
 ## 7. AI/BI Dashboard and Databricks App
