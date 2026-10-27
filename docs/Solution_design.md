@@ -1076,12 +1076,13 @@ To onboard a new dataset:
 ---
 
 
-
-
 ## 9. Orchestration
 
-### 9.1 Pipeline Workflow
-Databricks Workflow with:
+The pipeline is orchestrated using **Databricks Jobs & Pipelines**. To maintain clear separation of concerns and allow independent re-runs, the pipeline is split into three distinct Jobs.
+
+### 9.1 Job 1: Bronze & Silver Pipeline
+
+This job handles the ingestion and cleaning phases. 
 
 | Task | Depends On | Purpose |
 |------|------------|---------|
@@ -1092,7 +1093,9 @@ Databricks Workflow with:
 
 The three Silver tasks run in parallel after Bronze completes.
 
-### 9.2 Gold Workflow
+### 9.2 Job 2: Gold Layer Build
+
+This job builds the dimensional models and governed views. It is separate from the deployment so that it can be run independently during development.
 
 | Task | Depends On | Purpose |
 |------|------------|---------|
@@ -1104,50 +1107,48 @@ The three Silver tasks run in parallel after Bronze completes.
 
 The three fact tasks run in parallel after dimensions complete. The views task runs only after all facts succeed.
 
-After the Gold build workflow completes successfully, the separate Gold deployment workflow runs:
+### 9.3 Job 3: Gold Genie Deployment
+
+This job handles the post-build deployment steps. It must run immediately after the Gold Layer Build Job completes to restore security and update the AI layer.
 
 | Task | Depends On | Purpose |
 |------|------------|---------|
-| `apply_gold_metadata` | Gold consumption views available | Apply and validate Unity Catalog metadata |
+| `apply_gold_metadata` | — | Apply and validate Unity Catalog metadata |
 | `apply_gold_governance` | `apply_gold_metadata` | Restore and validate role-based access |
 | `deploy_genie_agent` | `apply_gold_governance` | Build and deploy the Clinical Data Agent |
 
 The deployment order is significant because the downstream Genie layer should only be deployed after the governed views have been rebuilt, documented and secured.
 
-### 9.3 Shared Run ID(VERIFY)
+### 9.4 Shared Run ID
 
 Each pipeline run uses one `run_id`:
-
 - The Bronze task generates the run ID.
 - Bronze publishes it as a Databricks task value.
 - Each Silver task reads it via `get_shared_run_id()`, fetching from the upstream task key `bronze_ingest`.
 - If a Silver notebook is run standalone, it falls back to a fresh UUID and logs a warning.
 
-The same `run_id` appears in every Bronze audit row and every Silver audit row for that run, enabling end-to-end traceability.
+The same `run_id` appears in every Bronze audit row and every Silver audit row for that run, enabling end-to-end traceability. The Gold build workflow does not currently share the run ID with Bronze and Silver. Gold uses a separate `_gold_timestamp` audit column per row instead.
 
-The Gold build workflow does not currently share the run ID with Bronze and Silver. Gold uses a separate `_gold_timestamp` audit column per row instead.
-
-
-### 9.4 Job parameters:
+### 9.5 Job Parameters
 
 | Key | Purpose |
 |-----|---------|
 | `run_id` | Shared identifier (`{{job.start_time.iso_datetime}}`) |
-| `table_filter` | Optional comma-separated list for testing |
+| `table_filter` | Optional comma-separated list for testing (Bronze/Silver only) |
 
-### 9.5 Design Decisions
+### 9.6 Design Decisions
 
 | Decision | What Was Built | Note |
 |----------|----------------|------|
-| Orchestrator | Databricks Workflows | Native, no external infrastructure |
+| Orchestrator | Databricks Jobs | Native, no external infrastructure |
+| Job structure | Three separate jobs | Allows independent re-runs of Bronze/Silver, Gold Build, and Gold Deployment |
 | Silver tasks | Parallel after Bronze | Three tasks run concurrently |
 | Gold facts | Parallel after dimensions | Three tasks run concurrently |
 | Run ID | Databricks task values | Bronze publishes, Silver reads |
 | Standalone fallback | Fresh UUID with warning | Prevents silent divergence of audit trail |
 | Test parameter | `table_filter` | Enables fast iteration |
 
-
-### 9.6 Use Case Extensions
+### 9.7 Use Case Extensions
 
 | Scenario | Extension |
 |----------|-----------|
@@ -1156,8 +1157,6 @@ The Gold build workflow does not currently share the run ID with Bronze and Silv
 | **External dependencies** | Add pre-flight HTTP task |
 | **Notification chains** | Add webhook task on completion |
 | **Gold run ID sharing** | Extend the task value pattern to Gold tasks |
-
-
 ---
 
 ## 10. Known Limitations
