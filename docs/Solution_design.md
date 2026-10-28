@@ -605,7 +605,7 @@ Bronze, Silver, metadata and Genie deployment are primarily configuration-driven
 
 **Configuration:** `Configs/genie/*.json`
 
-**Agent title:** Genie Agent
+**Agent title:** Genie Assisstant
 
 **Data sources:**
 
