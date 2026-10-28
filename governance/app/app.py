@@ -14,7 +14,7 @@ st.set_page_config(
 WORKSPACE_URL = "https://dbc-e99163ad-cc83.cloud.databricks.com"
 WORKSPACE_ID = "7474648421005201"
 
-GENIE_ID = "01f1cf6ed94c1ce4836afdec8039132f"
+GENIE_ID = "01f1d2631b231c36a2aee078674dfe33"
 
 HEALTHCARE_ADMIN_DASHBOARD_ID = "01f1c75cfc5b10f68e5248d66127d430"
 HEALTHCARE_HOSPITAL_OPERATIONS_DASHBOARD_ID = "01f1c7877138187ebbec58b2f8e0d339"
@@ -220,9 +220,13 @@ st.markdown(
 )
 
 # --- Tabs for Dashboard and AI Genie ---
-tab_ai_assistant, tab_heatlh_dashboard, tab_usage_dashboard  = st.tabs(["AI Assistant", "Health Data Dashboard", "Usage Dashboard"])
+tab_labels = ["Genie Assistant", "Health Data Dashboard"]
+if usage_dashboard_url:
+    tab_labels.append("Usage Dashboard")
 
-with tab_ai_assistant:
+tabs = st.tabs(tab_labels)
+
+with tabs[0]: # Genie Assistant
     if genie_url:
         st.markdown("#### Clinical Data Agent")
         st.write("Helpful Genie Assistant to answer your queries")
@@ -233,7 +237,7 @@ with tab_ai_assistant:
             "Please contact your administrator to be added to an authorised group."
         )
 
-with tab_heatlh_dashboard:
+with tabs[1]: # Health Data Dashboard
     if health_data_dashboard_url:
         st.markdown("#### Health Data Dashboard")
         st.write("Visual Dashboard for MIMIC-IV Health Data Repository")
@@ -244,14 +248,9 @@ with tab_heatlh_dashboard:
             "Please contact your administrator to be added to an authorised group."
         )
 
-with tab_usage_dashboard:
-    if usage_dashboard_url:
+if usage_dashboard_url:
+    with tabs[2]: # Usage Dashboard
         st.markdown("#### Usage Dashboard")
         st.write("Breakdown of current cost usage within Databricks")
         st.components.v1.iframe(usage_dashboard_url, height = 700, scrolling = True)
-    else:
-        st.info(
-            "You do not have access to the Dashboard.\n"
-            "Please contact your administrator to be added to an authorised group."
-        )
 
