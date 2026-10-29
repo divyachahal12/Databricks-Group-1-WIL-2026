@@ -768,7 +768,7 @@ Governance validation was performed separately from the semantic accuracy benchm
 | Query all views | `healthcare_admins` | Full unmasked access to all views | **PASS** |
 
 *Detailed screenshots demonstrating Genie responding to the Researcher and Hospital Operations roles are provided in:
-[**Genie Governance Validation**](https://github.com/divyachahal12/Databricks-Group-1-WIL-2026/tree/feature/darren/docs/AI%20Genie%20Governance%20Pics)
+[**Genie Governance Validation**](https://github.com/divyachahal12/Databricks-Group-1-WIL-2026/tree/main/docs/Screenshots/AI%20Genie/Governance)
 
 ### 6.7 Deployment
 
