@@ -53,6 +53,32 @@ Metadata and Genie deployment return to a config-driven pattern so that document
 ### Repository Structure
 
     cdr-accelerator/
+        configs/
+                bronze_config.json
+                silver_config.json
+                metadata/
+                    admission_journey.json
+                    hospital_operational_activity.json
+                    icu_clinical_monitoring.json
+                genie/ 
+                    instructions.json
+                    sample_questions.json
+                    sql_examples.json
+                    benchmarks.json
+                    joins.json
+                    sql_snippets.json
+        deployment/
+            01_apply_gold_metadata
+            02_apply_gold_governance
+            03_deploy_genie_agent
+            apply_gold_metadata.py
+            build_genie_config.py
+            deploy_genie_agent.py
+        docs/ 
+               Screenshots 
+               Dataset_onboarding.md 
+               Framework_Developer_Guide.md 
+               Operations_guide.md 
         drivers/
             bronze_layer/ 
                  bronze_ingest_mimic_iv
@@ -69,30 +95,6 @@ Metadata and Genie deployment return to a config-driven pattern so that document
                     04_build_operational_activity_fact
                 marts/
                     05_build_consumption_views
-        utils/
-            00_silver_utils
-        deployment/
-            01_apply_gold_metadata
-            02_apply_gold_governance
-            03_deploy_genie_agent
-            apply_gold_metadata.py
-            build_genie_config.py
-            deploy_genie_agent.py
-            
-        configs/
-            bronze_config.json
-            silver_config.json
-            metadata/
-                admission_journey.json
-                hospital_operational_activity.json
-                icu_clinical_monitoring.json
-            genie/ 
-                instructions.json
-                sample_questions.json
-                sql_examples.json
-                benchmarks.json
-                joins.json
-                sql_snippets.json
         governance/
             roles_and_groups.md
             app/
@@ -100,6 +102,9 @@ Metadata and Genie deployment return to a config-driven pattern so that document
                 app.yaml
                 requirements.txt
                 README.md
+        utils/
+            00_silver_utils
+        README.md
 
 ---
 
